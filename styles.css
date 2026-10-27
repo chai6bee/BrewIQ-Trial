@@ -2366,6 +2366,49 @@ p {
   opacity: 0.9;
 }
 
+/* "Install BrewIQ" dialogue — reuses .modal-dialog/.modal-header/etc. for
+   the shared chrome, and adds only its own inner layout here. */
+.pwa-install-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0 var(--space-4);
+}
+
+.pwa-install-icon {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.pwa-install-copy p {
+  color: var(--ink-700);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.pwa-install-steps {
+  text-align: left;
+  margin: var(--space-2) auto 0;
+  padding-left: var(--space-4);
+  max-width: 320px;
+  color: var(--ink-700);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.pwa-install-steps li {
+  margin-bottom: var(--space-1);
+}
+
+.pwa-install-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 /* ==========================================================================
    12. FLUID & ADAPTIVE BREAKPOINTS (1920 / 1440 / 768 / 375)
    ========================================================================== */
