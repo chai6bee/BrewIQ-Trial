@@ -2323,6 +2323,49 @@ p {
   border-color: #a82a2a;
 }
 
+/* PWA "new version available" banner — deliberately NOT styled like the
+   auto-dismissing .toast above: a software update is worth the owner's
+   attention and should stay put until they act on it or dismiss it,
+   rather than disappearing on its own after a few seconds. */
+.pwa-update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  background: var(--primary-900);
+  color: var(--ink-on-dark);
+  padding: var(--space-2-5) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.pwa-update-banner[hidden] {
+  display: none;
+}
+
+.pwa-update-banner button {
+  background: var(--ink-on-dark);
+  color: var(--primary-900);
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.pwa-update-banner button:hover {
+  opacity: 0.9;
+}
+
 /* ==========================================================================
    12. FLUID & ADAPTIVE BREAKPOINTS (1920 / 1440 / 768 / 375)
    ========================================================================== */
