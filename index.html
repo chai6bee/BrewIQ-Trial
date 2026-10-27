@@ -4,8 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Chai’ Bee’ BrewIQ — Café Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="icon" type="image/png" href="images/favicon.png">
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#B5652B" />
+  <link rel="apple-touch-icon" href="images/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
@@ -109,7 +112,6 @@
             <div class="brand-logo" aria-hidden="true">
   <img src="images/logo.png" alt="Chai Bee Logo" width="42" height="42">
 </div>
-
             <div class="brand-text">
               <span class="brand-title">Chai’ Bee’</span>
               <span class="brand-subtitle">BrewIQ</span>
@@ -924,5 +926,72 @@
 
   <!-- Interactive Toast Notification -->
   <div class="toast" id="actionToast" role="status" aria-live="polite" hidden></div>
+
+  <!-- PWA update banner: shown by the service-worker registration logic in
+       script.js when a new version has finished downloading in the
+       background, so the owner can refresh immediately instead of silently
+       staying on the old cached version until their next natural reload. -->
+  <div class="pwa-update-banner" id="pwaUpdateBanner" hidden role="status" aria-live="polite">
+    <span>A new version of BrewIQ is available.</span>
+    <button type="button" id="pwaUpdateBtn">Update Now</button>
+  </div>
+
+  <script>
+    // Service worker registration — kept inline (not in script.js) so it
+    // runs the instant the page parses, before script.js's own defer'd
+    // execution, and so it has zero dependency on anything else in the app
+    // loading successfully first.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then((reg) => {
+          // A worker may already be waiting (e.g. this tab was open during
+          // a previous deploy) — surface the banner immediately rather than
+          // waiting for a new install event that will never fire again.
+          if (reg.waiting) showPwaUpdateBanner_(reg.waiting);
+
+          reg.addEventListener('updatefound', () => {
+            const installing = reg.installing;
+            if (!installing) return;
+            installing.addEventListener('statechange', () => {
+              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                // "installed" + an existing controller means this is an
+                // UPDATE to an already-running app, not the very first
+                // install — only then is there an old version to warn
+                // about replacing.
+                showPwaUpdateBanner_(installing);
+              }
+            });
+          });
+        }).catch(() => {
+          // Service workers need HTTPS (or localhost) and a few browsers/
+          // in-app webviews disallow them outright — the app must keep
+          // working perfectly without one, just without offline caching.
+        });
+      });
+
+      let reloadingForUpdate = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        // Fires once the new worker actually takes control. Guards against
+        // the rare double-fire some browsers emit, which would otherwise
+        // reload the page twice in a row.
+        if (reloadingForUpdate) return;
+        reloadingForUpdate = true;
+        window.location.reload();
+      });
+
+      function showPwaUpdateBanner_(waitingWorker) {
+        const banner = document.getElementById('pwaUpdateBanner');
+        const btn = document.getElementById('pwaUpdateBtn');
+        if (!banner || !btn) return;
+        banner.hidden = false;
+        btn.onclick = () => {
+          // Tell the waiting worker to activate now instead of waiting for
+          // every tab to close — the controllerchange listener above then
+          // reloads this page once it actually takes over.
+          waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+        };
+      }
+    }
+  </script>
 </body>
 </html>
