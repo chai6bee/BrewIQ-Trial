@@ -927,6 +927,44 @@
   <!-- Interactive Toast Notification -->
   <div class="toast" id="actionToast" role="status" aria-live="polite" hidden></div>
 
+  <!-- "Install BrewIQ" dialogue — shown once per device on first visit (see
+       the inline script below), a few seconds after the loading screen, so
+       the owner is immediately offered a real home-screen app rather than
+       having to discover a hidden browser menu option themselves.
+       Two bodies are pre-rendered and toggled by JS depending on the
+       platform: Android/Chrome/Edge get a real one-tap install button
+       (via the browser's native beforeinstallprompt flow); iOS Safari can
+       never trigger that natively (Apple blocks it outright), so it gets
+       plain "tap Share, then Add to Home Screen" instructions instead. -->
+  <div class="modal-backdrop" id="pwaInstallBackdrop" hidden>
+    <div class="modal-dialog pwa-install-dialog" role="dialog" aria-modal="true" aria-labelledby="pwaInstallTitle">
+      <div class="modal-header">
+        <h3 class="modal-title" id="pwaInstallTitle">Install BrewIQ</h3>
+        <button type="button" class="modal-close-btn" id="pwaInstallCloseBtn" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="pwa-install-body">
+          <img src="images/logo.png" alt="" class="pwa-install-icon" width="56" height="56" />
+          <div class="pwa-install-copy" id="pwaInstallAndroidCopy">
+            <p>Install BrewIQ on this device for quick access from your home screen, with no browser bar — just like a regular app.</p>
+          </div>
+          <div class="pwa-install-copy" id="pwaInstallIosCopy" hidden>
+            <p>To install BrewIQ on this device:</p>
+            <ol class="pwa-install-steps">
+              <li>Tap the <strong>Share</strong> button <span aria-hidden="true">(⬆️)</span> in Safari</li>
+              <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+              <li>Tap <strong>"Add"</strong> — BrewIQ will appear on your home screen</li>
+            </ol>
+          </div>
+        </div>
+        <div class="pwa-install-actions">
+          <button type="button" class="table-action-btn" id="pwaInstallLaterBtn">Maybe Later</button>
+          <button type="button" class="primary-cta-pill" id="pwaInstallNowBtn" hidden>Install Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- PWA update banner: shown by the service-worker registration logic in
        script.js when a new version has finished downloading in the
        background, so the owner can refresh immediately instead of silently
@@ -992,6 +1030,106 @@
         };
       }
     }
+
+    // "Install BrewIQ" dialogue — shown once per device, a few seconds
+    // after first load, so the owner is offered a real home-screen install
+    // instead of having to find a hidden browser menu option themselves.
+    (function () {
+      var DISMISS_KEY = 'brewiq_install_dismissed_v1';
+      var backdrop = document.getElementById('pwaInstallBackdrop');
+      var androidCopy = document.getElementById('pwaInstallAndroidCopy');
+      var iosCopy = document.getElementById('pwaInstallIosCopy');
+      var installBtn = document.getElementById('pwaInstallNowBtn');
+      var laterBtn = document.getElementById('pwaInstallLaterBtn');
+      var closeBtn = document.getElementById('pwaInstallCloseBtn');
+      if (!backdrop) return;
+
+      // Already running as an installed app (home-screen launch, or a
+      // desktop install) — nothing to prompt for. Covers the standard
+      // check plus the older iOS Safari-specific flag.
+      var alreadyInstalled =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone === true;
+
+      // Browser storage can throw in a private window or with site data
+      // blocked — the dialogue just stays untracked (may reappear on a
+      // later visit) rather than breaking anything.
+      var wasDismissed = false;
+      try {
+        wasDismissed = localStorage.getItem(DISMISS_KEY) === '1';
+      } catch (e) {}
+
+      if (alreadyInstalled || wasDismissed) return;
+
+      var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+
+      var deferredInstallPrompt = null;
+      // Chrome/Edge/Android fire this instead of showing their own mini-
+      // infobar, as long as we call preventDefault() — capturing it here
+      // lets our own "Install Now" button trigger the real native dialogue
+      // later, on the owner's own timing, rather than the browser's.
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        if (installBtn) installBtn.hidden = false;
+      });
+
+      function openInstallDialog() {
+        if (isIos) {
+          if (androidCopy) androidCopy.hidden = true;
+          if (iosCopy) iosCopy.hidden = false;
+          if (installBtn) installBtn.hidden = true; // iOS can never trigger this natively
+        } else {
+          if (androidCopy) androidCopy.hidden = false;
+          if (iosCopy) iosCopy.hidden = true;
+          // installBtn stays hidden until/unless beforeinstallprompt actually
+          // fires above — some browsers (Firefox mobile, in-app webviews)
+          // never fire it, and showing a button that does nothing is worse
+          // than not showing one.
+        }
+        backdrop.hidden = false;
+      }
+
+      function dismissInstallDialog() {
+        backdrop.hidden = true;
+        try {
+          localStorage.setItem(DISMISS_KEY, '1');
+        } catch (e) {}
+      }
+
+      if (laterBtn) laterBtn.addEventListener('click', dismissInstallDialog);
+      if (closeBtn) closeBtn.addEventListener('click', dismissInstallDialog);
+      if (backdrop) {
+        backdrop.addEventListener('click', function (e) {
+          if (e.target === backdrop) dismissInstallDialog();
+        });
+      }
+      if (installBtn) {
+        installBtn.addEventListener('click', function () {
+          if (!deferredInstallPrompt) return;
+          deferredInstallPrompt.prompt();
+          deferredInstallPrompt.userChoice.finally(function () {
+            deferredInstallPrompt = null;
+            dismissInstallDialog();
+          });
+        });
+      }
+
+      // A few seconds' delay lets the loading screen and first paint settle
+      // before anything competes for the owner's attention.
+      window.addEventListener('load', function () {
+        setTimeout(openInstallDialog, 2500);
+      });
+
+      // If the browser confirms the app was actually installed (any path —
+      // our button, the browser's own menu, desktop install icon), stop
+      // ever asking again on this device.
+      window.addEventListener('appinstalled', function () {
+        try {
+          localStorage.setItem(DISMISS_KEY, '1');
+        } catch (e) {}
+      });
+    })();
   </script>
 </body>
 </html>
