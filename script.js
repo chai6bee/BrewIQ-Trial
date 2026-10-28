@@ -1917,7 +1917,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const dialogEl = document.querySelector('.modal-dialog');
     if (dialogEl) dialogEl.classList.toggle('modal-dialog--wide', type === 'eod-entry');
 
-    if (type === 'record-advance') {
+    if (type === 'restock-item') {
+      const idx = Number(contextIdx);
+      const item = state.inventory[idx];
+      modalTitle.textContent = item ? `Restock — ${item.item}` : 'Restock Ingredient';
+      if (!item) {
+        modalBody.innerHTML = `<p class="empty-state-text">Couldn't find that ingredient — close this and try again.</p>`;
+      } else {
+        modalBody.innerHTML = `
+          <form id="restockItemForm" class="form-grid">
+            <input type="hidden" name="invIdx" value="${idx}" />
+            <div class="form-field form-field--full">
+              <label class="form-label">Ingredient</label>
+              <p class="form-static-value">${esc(item.item)} — currently ${item.stock} ${esc(item.unit)}</p>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="restockQtyInput">Quantity Received (${esc(item.unit)})</label>
+              <input class="form-input tabular-nums" id="restockQtyInput" name="qty" type="number" min="0.01" step="0.01" placeholder="e.g. 25" required autofocus />
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="restockReorderInput">Low Stock Threshold (${esc(item.unit)})</label>
+              <input class="form-input tabular-nums" id="restockReorderInput" name="reorder" type="number" min="0" step="0.01" value="${item.reorder}" />
+            </div>
+            <p class="form-hint form-field--full">Enter exactly how much stock you received — it's added on top of the current ${item.stock} ${esc(item.unit)}, not a replacement. Adjust the threshold only if you want the Low Stock alert to trigger at a different level than it does now.</p>
+            <div class="form-field form-field--full">
+              <button type="submit" class="primary-cta-pill" style="justify-content:center;">Update Stock</button>
+            </div>
+          </form>
+        `;
+      }
+    } else if (type === 'record-advance') {
       const idx = Number(contextIdx);
       const emp = state.staff[idx];
       modalTitle.textContent = emp ? `Record Advance — ${emp.name}` : 'Record Advance';
@@ -3208,7 +3237,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="status-pill ${inv.status === 'Optimal' ? 'status-pill--green' : 'status-pill--red'}">${esc(inv.status)}</span>
                       </td>
                       <td class="text-right">
-                        <button type="button" class="table-action-btn ripple-surface" data-action="restock-item" data-idx="${idx}">
+                        <button type="button" class="table-action-btn ripple-surface" data-action="open-modal" data-modal="restock-item" data-idx="${idx}">
                           + Restock
                         </button>
                       </td>
@@ -4418,19 +4447,6 @@ document.addEventListener('DOMContentLoaded', () => {
           break;
         }
 
-        case 'restock-item': {
-          const idx = Number(actionEl.getAttribute('data-idx'));
-          const item = state.inventory[idx];
-          if (item) {
-            item.stock = Number((item.stock + 10).toFixed(1));
-            item.status = item.stock >= item.reorder ? 'Optimal' : 'Low Stock';
-            renderModulePage('inventory');
-            showToast(`Restocked +10 ${item.unit} of ${item.item}`);
-            apiCall('restockIngredient', { sku: item.sku, newStock: item.stock });
-          }
-          break;
-        }
-
         case 'toggle-low-stock-filter': {
           state.inventoryLowStockOnly = !state.inventoryLowStockOnly;
           renderModulePage('inventory');
@@ -4896,6 +4912,52 @@ document.addEventListener('DOMContentLoaded', () => {
         shift,
         phone,
         salary
+      });
+    } else if (form.id === 'restockItemForm') {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const idx = Number(fd.get('invIdx'));
+      const item = state.inventory[idx];
+      const qty = Number(fd.get('qty'));
+      const reorderRaw = fd.get('reorder');
+      const reorder = reorderRaw === '' || reorderRaw === null ? null : Number(reorderRaw);
+      if (!item) {
+        showToast('Could not find that ingredient — please try again', 'warning');
+        return;
+      }
+      if (!qty || qty <= 0) {
+        showToast('Please enter how much stock was actually received');
+        return;
+      }
+      if (reorder !== null && (isNaN(reorder) || reorder < 0)) {
+        showToast('Low stock threshold must be 0 or a positive number');
+        return;
+      }
+      closeModal();
+
+      // Reflects locally first regardless of backend state, same pattern as
+      // every other write in this app — the owner sees their entry take
+      // effect immediately rather than waiting on a round trip.
+      item.stock = Number((item.stock + qty).toFixed(2));
+      if (reorder !== null) item.reorder = reorder;
+      item.status = item.stock >= item.reorder ? 'Optimal' : 'Low Stock';
+      renderModulePage('inventory');
+
+      if (!state.settings.apiBaseUrl) {
+        showToast(`Restocked +${qty} ${item.unit} of ${item.item} locally — connect the Cloud in Settings to save it for real`, 'warning');
+        return;
+      }
+
+      showToast(`Saving restock of ${qty} ${item.unit} for ${item.item}…`);
+      apiCall('restockIngredient', { sku: item.sku, qty, reorder }).then((res) => {
+        if (res && res.ok) {
+          showToast(`Restocked +${qty} ${item.unit} of ${item.item}`);
+          if (state.settings.syncOnSave) {
+            syncFromSheet({ silent: true });
+          }
+        } else {
+          showToast(`Could not save restock for ${item.item} — check your connection`, 'warning');
+        }
       });
     } else if (form.id === 'recordAdvanceForm') {
       e.preventDefault();
