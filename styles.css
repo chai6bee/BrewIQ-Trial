@@ -2258,6 +2258,27 @@ p {
   font-size: var(--text-xs);
   color: var(--ink-700);
   line-height: var(--leading-snug);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.eod-qty-row--no-bom {
+  background: var(--accent-orange-bg);
+}
+
+.eod-no-bom-badge {
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 8px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.eod-no-bom-badge:hover {
+  filter: brightness(0.95);
 }
 
 .eod-qty-input {
