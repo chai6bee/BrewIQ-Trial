@@ -245,270 +245,270 @@ SEED_DAILY_SUMMARY.forEach((d) => {
 });
 // Per-ingredient recipe BOM (bill of materials): one row per product+ingredient
 // pair, with the real usage quantity and line cost extracted from the owner's
-// per-category costing workbook. Powers the editable Menu Costing recipe view —
-// editing an ingredient's cost or usage here recomputes that product's landed
-// cost and margin, same as the live Code.gs updateRecipeBomCost action does.
+// per-category costing workbook (90 products, 257 lines, verified ingredient-by-
+// ingredient against live Inventory unit costs on 2026-10-29). Powers the
+// editable Menu Costing recipe view and the owner-built recipe-builder — editing
+// an ingredient's cost or usage here recomputes that product's landed cost and
+// margin, same as the live Code.gs updateRecipeBomCost action does.
 const SEED_RECIPE_BOM = [
-    { id:'BOM-001', productId:'P001', productName:"Veg Cutlet", ingId:'ING-058', ingName:"Veg Cutlet", usageQtyPerUnit:1.0, lineCost:10.0 },
-    { id:'BOM-002', productId:'P002', productName:"Veg Samosa", ingId:'ING-059', ingName:"Veg Samosa", usageQtyPerUnit:1.0, lineCost:8.1333 },
-    { id:'BOM-003', productId:'P003', productName:"Paneer Roll", ingId:'ING-060', ingName:"Paneer Roll", usageQtyPerUnit:1.0, lineCost:15.5 },
-    { id:'BOM-004', productId:'P004', productName:"Veg Cheese Corn Nuggets - Regular", ingId:'ING-061', ingName:"V.C.Nuggets", usageQtyPerUnit:3.0, lineCost:19.5 },
-    { id:'BOM-005', productId:'P005', productName:"Veg Cheese Corn Nuggets - Special", ingId:'ING-061', ingName:"V.C.Nuggets", usageQtyPerUnit:5.0, lineCost:32.5 },
-    { id:'BOM-006', productId:'P006', productName:"Veg Cheese Ball - Regular", ingId:'ING-062', ingName:"V.C.Ball", usageQtyPerUnit:3.0, lineCost:19.5 },
-    { id:'BOM-007', productId:'P007', productName:"Veg Cheese Ball - Special", ingId:'ING-062', ingName:"V.C.Ball", usageQtyPerUnit:5.0, lineCost:32.5 },
-    { id:'BOM-008', productId:'P008', productName:"French Fry - Regular", ingId:'ING-063', ingName:"French Fry", usageQtyPerUnit:130.0, lineCost:15.86 },
-    { id:'BOM-009', productId:'P009', productName:"French Fry - Special", ingId:'ING-063', ingName:"French Fry", usageQtyPerUnit:220.0, lineCost:26.84 },
-    { id:'BOM-010', productId:'P010', productName:"Chicken Samosa", ingId:'ING-064', ingName:"Ch.Samosa", usageQtyPerUnit:2.0, lineCost:19.6827 },
-    { id:'BOM-011', productId:'P011', productName:"Chicken Cutlet", ingId:'ING-065', ingName:"Ch.Cutilet", usageQtyPerUnit:1.0, lineCost:12.8967 },
-    { id:'BOM-012', productId:'P012', productName:"Chicken Roll", ingId:'ING-066', ingName:"Ch.Roll", usageQtyPerUnit:1.0, lineCost:15.0 },
-    { id:'BOM-013', productId:'P013', productName:"Chicken Cheese Ball - Regular", ingId:'ING-067', ingName:"Ch.C.Ball", usageQtyPerUnit:3.0, lineCost:23.1 },
-    { id:'BOM-014', productId:'P014', productName:"Chicken Cheese Ball - Special", ingId:'ING-067', ingName:"Ch.C.Ball", usageQtyPerUnit:5.0, lineCost:38.5 },
-    { id:'BOM-015', productId:'P015', productName:"Chicken Popcorn", ingId:'ING-068', ingName:"Chi.Pop Corn", usageQtyPerUnit:120.0, lineCost:41.16 },
-    { id:'BOM-016', productId:'P016', productName:"Chicken Nuggets - Regular", ingId:'ING-069', ingName:"Chi.Nuggest", usageQtyPerUnit:3.0, lineCost:18.8574 },
-    { id:'BOM-017', productId:'P017', productName:"Chicken Nuggets - SPECIAL", ingId:'ING-069', ingName:"Chi.Nuggest", usageQtyPerUnit:5.0, lineCost:31.429 },
-    { id:'BOM-018', productId:'P018', productName:"Chicken Lollipop - Regular", ingId:'ING-070', ingName:"Chi.Lollipop", usageQtyPerUnit:2.0, lineCost:35.84 },
-    { id:'BOM-019', productId:'P019', productName:"Chicken Lollipop - Special", ingId:'ING-070', ingName:"Chi.Lollipop", usageQtyPerUnit:5.0, lineCost:89.6 },
-    { id:'BOM-020', productId:'P020', productName:"Chicken Wings", ingId:'ING-071', ingName:"Chi.Wings", usageQtyPerUnit:125.0, lineCost:50.595 },
-    { id:'BOM-021', productId:'P021', productName:"Chicken Drumstick - Normal", ingId:'ING-072', ingName:"Chi.Drumstrick", usageQtyPerUnit:1.0, lineCost:48.2137 },
-    { id:'BOM-022', productId:'P022', productName:"Chicken Drumstick - Medium", ingId:'ING-072', ingName:"Chi.Drumstrick", usageQtyPerUnit:2.0, lineCost:96.4275 },
-    { id:'BOM-023', productId:'P023', productName:"Chicken Drumstick - Special", ingId:'ING-072', ingName:"Chi.Drumstrick", usageQtyPerUnit:5.0, lineCost:241.0687 },
-    { id:'BOM-024', productId:'P024', productName:"Veg Momos", ingId:'ING-073', ingName:"Veg.Momos", usageQtyPerUnit:5.0, lineCost:30.476 },
-    { id:'BOM-025', productId:'P025', productName:"Paneer Momos", ingId:'ING-074', ingName:"Pan.Momos", usageQtyPerUnit:5.0, lineCost:40.952 },
-    { id:'BOM-026', productId:'P026', productName:"Chicken Momos", ingId:'ING-075', ingName:"Chi.Momos", usageQtyPerUnit:5.0, lineCost:35.238 },
-    { id:'BOM-027', productId:'P027', productName:"Chicken Tikka Momos", ingId:'ING-076', ingName:"Chi.Tikka Mo", usageQtyPerUnit:5.0, lineCost:39.048 },
-    { id:'BOM-028', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-032', ingName:"Bread (Sandwich)", usageQtyPerUnit:2.0, lineCost:10.0 },
-    { id:'BOM-029', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:2.4 },
-    { id:'BOM-030', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:1.5 },
-    { id:'BOM-031', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:50.0, lineCost:5.5 },
-    { id:'BOM-032', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:2.5 },
-    { id:'BOM-033', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:3.0 },
-    { id:'BOM-034', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-035', productId:'P028', productName:"Vegetable Sandwich", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:35.0, lineCost:3.4331 },
-    { id:'BOM-036', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-032', ingName:"Bread (Sandwich)", usageQtyPerUnit:2.0, lineCost:10.0 },
-    { id:'BOM-037', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:2.4 },
-    { id:'BOM-038', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:1.5 },
-    { id:'BOM-039', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:50.0, lineCost:5.5 },
-    { id:'BOM-040', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:2.5 },
-    { id:'BOM-041', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:3.0 },
-    { id:'BOM-042', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-043', productId:'P029', productName:"Vegetable Cheese Sandwich", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:35.0, lineCost:3.4331 },
-    { id:'BOM-044', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-032', ingName:"Bread (Sandwich)", usageQtyPerUnit:2.0, lineCost:10.0 },
-    { id:'BOM-045', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:2.4 },
-    { id:'BOM-046', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:1.5 },
-    { id:'BOM-047', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:30.0, lineCost:3.3 },
-    { id:'BOM-048', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-049', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:0.0 },
-    { id:'BOM-050', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-051', productId:'P030', productName:"Paneer Sandwich", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:35.0, lineCost:3.4331 },
-    { id:'BOM-052', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-032', ingName:"Bread (Sandwich)", usageQtyPerUnit:2.0, lineCost:10.0 },
-    { id:'BOM-053', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:2.4 },
-    { id:'BOM-054', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:1.5 },
-    { id:'BOM-055', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:30.0, lineCost:3.3 },
-    { id:'BOM-056', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-057', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:0.0 },
-    { id:'BOM-058', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-059', productId:'P031', productName:"Paneer Cheese Sandwich", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:35.0, lineCost:3.4331 },
-    { id:'BOM-060', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-032', ingName:"Bread (Sandwich)", usageQtyPerUnit:2.0, lineCost:10.0 },
-    { id:'BOM-061', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:2.4 },
-    { id:'BOM-062', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:1.5 },
-    { id:'BOM-063', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-064', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-065', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:0.0 },
-    { id:'BOM-066', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-067', productId:'P032', productName:"Chicken Sandwich", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:35.0, lineCost:3.4331 },
-    { id:'BOM-068', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-032', ingName:"Bread (Sandwich)", usageQtyPerUnit:2.0, lineCost:10.0 },
-    { id:'BOM-069', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:2.4 },
-    { id:'BOM-070', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:1.5 },
-    { id:'BOM-071', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-072', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-073', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:0.0 },
-    { id:'BOM-074', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-075', productId:'P033', productName:"Peri Peri Chicken Sandwich", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:35.0, lineCost:3.4331 },
-    { id:'BOM-076', productId:'P034', productName:"Bread Omelette", ingId:'ING-032', ingName:"Bread (Sandwich)", usageQtyPerUnit:2.0, lineCost:4.0 },
-    { id:'BOM-077', productId:'P034', productName:"Bread Omelette", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:2.4 },
-    { id:'BOM-078', productId:'P034', productName:"Bread Omelette", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:1.5 },
-    { id:'BOM-079', productId:'P034', productName:"Bread Omelette", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-080', productId:'P034', productName:"Bread Omelette", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-081', productId:'P034', productName:"Bread Omelette", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:0.0 },
-    { id:'BOM-082', productId:'P034', productName:"Bread Omelette", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-083', productId:'P034', productName:"Bread Omelette", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:35.0, lineCost:3.4331 },
-    { id:'BOM-084', productId:'P035', productName:"Peri Peri Noodles", ingId:'ING-045', ingName:"Noodles", usageQtyPerUnit:1.5, lineCost:22.5 },
-    { id:'BOM-085', productId:'P035', productName:"Peri Peri Noodles", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:0.0 },
-    { id:'BOM-086', productId:'P035', productName:"Peri Peri Noodles", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:0.0 },
-    { id:'BOM-087', productId:'P035', productName:"Peri Peri Noodles", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-088', productId:'P035', productName:"Peri Peri Noodles", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-089', productId:'P035', productName:"Peri Peri Noodles", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:0.0 },
-    { id:'BOM-090', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-045', ingName:"Noodles", usageQtyPerUnit:1.5, lineCost:22.5 },
-    { id:'BOM-091', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-033', ingName:"Onion", usageQtyPerUnit:40.0, lineCost:0.0 },
-    { id:'BOM-092', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-034', ingName:"Tomato", usageQtyPerUnit:30.0, lineCost:0.0 },
-    { id:'BOM-093', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-040', ingName:"Corn", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-094', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-039', ingName:"Carrot", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-095', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-041', ingName:"Capsicum", usageQtyPerUnit:15.0, lineCost:0.0 },
-    { id:'BOM-096', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-036', ingName:"Mayo", usageQtyPerUnit:15.0, lineCost:1.65 },
-    { id:'BOM-097', productId:'P036', productName:"CHAI'BEE' SPECIAL Cheese Noodles", ingId:'ING-035', ingName:"Sauce", usageQtyPerUnit:15.0, lineCost:1.4713 },
-    { id:'BOM-098', productId:'P037', productName:"Mango Lassi", ingId:'ING-056', ingName:"Curd", usageQtyPerUnit:150.0, lineCost:10.35 },
-    { id:'BOM-099', productId:'P037', productName:"Mango Lassi", ingId:'ING-014', ingName:"Mango Pulp", usageQtyPerUnit:50.0, lineCost:14.0 },
-    { id:'BOM-100', productId:'P037', productName:"Mango Lassi", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-101', productId:'P038', productName:"Strawberry Lassi", ingId:'ING-056', ingName:"Curd", usageQtyPerUnit:150.0, lineCost:10.35 },
-    { id:'BOM-102', productId:'P038', productName:"Strawberry Lassi", ingId:'ING-015', ingName:"Strawberry Pulp", usageQtyPerUnit:50.0, lineCost:14.0 },
-    { id:'BOM-103', productId:'P038', productName:"Strawberry Lassi", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-104', productId:'P039', productName:"Sweet Lassi", ingId:'ING-056', ingName:"Curd", usageQtyPerUnit:150.0, lineCost:10.35 },
-    { id:'BOM-105', productId:'P039', productName:"Sweet Lassi", ingId:'ING-093', ingName:"Sugar Syrup", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-106', productId:'P039', productName:"Sweet Lassi", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-107', productId:'P040', productName:"Mint Lassi", ingId:'ING-056', ingName:"Curd", usageQtyPerUnit:150.0, lineCost:10.35 },
-    { id:'BOM-108', productId:'P040', productName:"Mint Lassi", ingId:'ING-092', ingName:"Green Mint", usageQtyPerUnit:30.0, lineCost:8.8 },
-    { id:'BOM-109', productId:'P040', productName:"Mint Lassi", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-110', productId:'P041', productName:"Rose Lassi", ingId:'ING-056', ingName:"Curd", usageQtyPerUnit:150.0, lineCost:10.35 },
-    { id:'BOM-111', productId:'P041', productName:"Rose Lassi", ingId:'ING-031', ingName:"Rose Milk", usageQtyPerUnit:50.0, lineCost:10.1547 },
-    { id:'BOM-112', productId:'P041', productName:"Rose Lassi", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-113', productId:'P042', productName:"Vanilla Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-114', productId:'P042', productName:"Vanilla Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-115', productId:'P042', productName:"Vanilla Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-116', productId:'P043', productName:"Mango Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-117', productId:'P043', productName:"Mango Milkshake", ingId:'ING-011', ingName:"Mango Ice Cream", usageQtyPerUnit:100.0, lineCost:10.75 },
-    { id:'BOM-118', productId:'P043', productName:"Mango Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-119', productId:'P044', productName:"Strawberry Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-120', productId:'P044', productName:"Strawberry Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-121', productId:'P044', productName:"Strawberry Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-122', productId:'P045', productName:"Chocolate Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-123', productId:'P045', productName:"Chocolate Milkshake", ingId:'ING-012', ingName:"Chocolate Ice Cream", usageQtyPerUnit:100.0, lineCost:10.25 },
-    { id:'BOM-124', productId:'P045', productName:"Chocolate Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-125', productId:'P046', productName:"Chai Bee Special Tender Coconut Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-126', productId:'P046', productName:"Chai Bee Special Tender Coconut Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-127', productId:'P046', productName:"Chai Bee Special Tender Coconut Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-128', productId:'P047', productName:"Oreo Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-129', productId:'P047', productName:"Oreo Milkshake", ingId:'ING-012', ingName:"Chocolate Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-130', productId:'P047', productName:"Oreo Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-131', productId:'P048', productName:"KitKat Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-132', productId:'P048', productName:"KitKat Milkshake", ingId:'ING-012', ingName:"Chocolate Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-133', productId:'P048', productName:"KitKat Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-134', productId:'P049', productName:"Kiwi Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-135', productId:'P049', productName:"Kiwi Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-136', productId:'P049', productName:"Kiwi Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-137', productId:'P050', productName:"Butterscotch Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-138', productId:'P050', productName:"Butterscotch Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-139', productId:'P050', productName:"Butterscotch Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-140', productId:'P051', productName:"Dry Fruit Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-141', productId:'P051', productName:"Dry Fruit Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-142', productId:'P051', productName:"Dry Fruit Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-143', productId:'P052', productName:"Peanut Butter Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-144', productId:'P052', productName:"Peanut Butter Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-145', productId:'P052', productName:"Peanut Butter Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-146', productId:'P053', productName:"Butter Fruit Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-147', productId:'P053', productName:"Butter Fruit Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-148', productId:'P053', productName:"Butter Fruit Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-149', productId:'P054', productName:"Fig Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-150', productId:'P054', productName:"Fig Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-151', productId:'P054', productName:"Fig Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-152', productId:'P055', productName:"Blueberry Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-153', productId:'P055', productName:"Blueberry Milkshake", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-154', productId:'P055', productName:"Blueberry Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-155', productId:'P056', productName:"Coffee Milkshake", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-156', productId:'P056', productName:"Coffee Milkshake", ingId:'ING-012', ingName:"Chocolate Ice Cream", usageQtyPerUnit:100.0, lineCost:10.25 },
-    { id:'BOM-157', productId:'P056', productName:"Coffee Milkshake", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-158', productId:'P057', productName:"Cold Coffee", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-159', productId:'P057', productName:"Cold Coffee", ingId:'ING-012', ingName:"Chocolate Ice Cream", usageQtyPerUnit:100.0, lineCost:10.25 },
-    { id:'BOM-160', productId:'P057', productName:"Cold Coffee", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-161', productId:'P058', productName:"Rose Milk", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:150.0, lineCost:10.65 },
-    { id:'BOM-162', productId:'P058', productName:"Rose Milk", ingId:'ING-010', ingName:"Vanilla Ice Cream", usageQtyPerUnit:100.0, lineCost:7.75 },
-    { id:'BOM-163', productId:'P058', productName:"Rose Milk", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-164', productId:'P059', productName:"Blue Mojito", ingId:'ING-049', ingName:"Blue-Moji", usageQtyPerUnit:30.0, lineCost:11.4284 },
-    { id:'BOM-165', productId:'P059', productName:"Blue Mojito", ingId:'ING-086', ingName:"Sprite", usageQtyPerUnit:150.0, lineCost:6.0 },
-    { id:'BOM-166', productId:'P059', productName:"Blue Mojito", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:40.0, lineCost:5.0909 },
-    { id:'BOM-167', productId:'P060', productName:"Lime Mint Mojito", ingId:'ING-050', ingName:"Limemint-Moji", usageQtyPerUnit:30.0, lineCost:11.4284 },
-    { id:'BOM-168', productId:'P060', productName:"Lime Mint Mojito", ingId:'ING-086', ingName:"Sprite", usageQtyPerUnit:150.0, lineCost:6.0 },
-    { id:'BOM-169', productId:'P060', productName:"Lime Mint Mojito", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:40.0, lineCost:5.0909 },
-    { id:'BOM-170', productId:'P061', productName:"Strawberry Mojito", ingId:'ING-051', ingName:"Strberry-Moji", usageQtyPerUnit:30.0, lineCost:8.8 },
-    { id:'BOM-171', productId:'P061', productName:"Strawberry Mojito", ingId:'ING-086', ingName:"Sprite", usageQtyPerUnit:150.0, lineCost:6.0 },
-    { id:'BOM-172', productId:'P061', productName:"Strawberry Mojito", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:40.0, lineCost:5.0909 },
-    { id:'BOM-173', productId:'P062', productName:"Mango Mojito", ingId:'ING-052', ingName:"Mango(Mazza)", usageQtyPerUnit:0.0, lineCost:0.0 },
-    { id:'BOM-174', productId:'P062', productName:"Mango Mojito", ingId:'ING-052', ingName:"Mango(Mazza)", usageQtyPerUnit:150.0, lineCost:9.375 },
-    { id:'BOM-175', productId:'P062', productName:"Mango Mojito", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:40.0, lineCost:5.0909 },
-    { id:'BOM-176', productId:'P063', productName:"Watermelon Mojito", ingId:'ING-053', ingName:"Watermelon-Moji", usageQtyPerUnit:30.0, lineCost:8.8 },
-    { id:'BOM-177', productId:'P063', productName:"Watermelon Mojito", ingId:'ING-086', ingName:"Sprite", usageQtyPerUnit:150.0, lineCost:6.0 },
-    { id:'BOM-178', productId:'P063', productName:"Watermelon Mojito", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:40.0, lineCost:5.0909 },
-    { id:'BOM-179', productId:'P064', productName:"Classic Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:4.26 },
-    { id:'BOM-180', productId:'P064', productName:"Classic Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:2.05 },
-    { id:'BOM-181', productId:'P064', productName:"Classic Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-182', productId:'P065', productName:"Ginger Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:4.26 },
-    { id:'BOM-183', productId:'P065', productName:"Ginger Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:2.05 },
-    { id:'BOM-184', productId:'P065', productName:"Ginger Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-185', productId:'P066', productName:"Cardamom Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:4.26 },
-    { id:'BOM-186', productId:'P066', productName:"Cardamom Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:2.05 },
-    { id:'BOM-187', productId:'P066', productName:"Cardamom Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-188', productId:'P067', productName:"Masala Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:4.26 },
-    { id:'BOM-189', productId:'P067', productName:"Masala Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:2.05 },
-    { id:'BOM-190', productId:'P067', productName:"Masala Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-191', productId:'P068', productName:"Black Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:0.0 },
-    { id:'BOM-192', productId:'P068', productName:"Black Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:2.05 },
-    { id:'BOM-193', productId:'P068', productName:"Black Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-194', productId:'P069', productName:"Lemon Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:0.0 },
-    { id:'BOM-195', productId:'P069', productName:"Lemon Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:2.05 },
-    { id:'BOM-196', productId:'P069', productName:"Lemon Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-197', productId:'P070', productName:"Ginger Lemon Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:0.0 },
-    { id:'BOM-198', productId:'P070', productName:"Ginger Lemon Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:2.05 },
-    { id:'BOM-199', productId:'P070', productName:"Ginger Lemon Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-200', productId:'P071', productName:"Filter Coffee", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:4.26 },
-    { id:'BOM-201', productId:'P071', productName:"Filter Coffee", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:6.25, lineCost:3.875 },
-    { id:'BOM-202', productId:'P071', productName:"Filter Coffee", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-203', productId:'P072', productName:"Black Coffee", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:0.0 },
-    { id:'BOM-204', productId:'P072', productName:"Black Coffee", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:6.0, lineCost:3.72 },
-    { id:'BOM-205', productId:'P072', productName:"Black Coffee", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-206', productId:'P073', productName:"Milk", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:80.0, lineCost:5.68 },
-    { id:'BOM-207', productId:'P073', productName:"Milk", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:5.0, lineCost:0.0 },
-    { id:'BOM-208', productId:'P073', productName:"Milk", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-209', productId:'P074', productName:"Horlicks", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:4.26 },
-    { id:'BOM-210', productId:'P074', productName:"Horlicks", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:10.0, lineCost:5.3 },
-    { id:'BOM-211', productId:'P074', productName:"Horlicks", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-212', productId:'P075', productName:"Boost", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:60.0, lineCost:4.26 },
-    { id:'BOM-213', productId:'P075', productName:"Boost", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:10.0, lineCost:4.85 },
-    { id:'BOM-214', productId:'P075', productName:"Boost", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:15.0, lineCost:0.975 },
-    { id:'BOM-215', productId:'P076', productName:"Parcel Tea", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:120.0, lineCost:8.52 },
-    { id:'BOM-216', productId:'P076', productName:"Parcel Tea", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:10.0, lineCost:4.1 },
-    { id:'BOM-217', productId:'P076', productName:"Parcel Tea", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-218', productId:'P077', productName:"Parcel Coffee", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:120.0, lineCost:8.52 },
-    { id:'BOM-219', productId:'P077', productName:"Parcel Coffee", ingId:'ING-003', ingName:"Tea Powder", usageQtyPerUnit:12.0, lineCost:7.44 },
-    { id:'BOM-220', productId:'P077', productName:"Parcel Coffee", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-221', productId:'P078', productName:"Apple Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-222', productId:'P078', productName:"Apple Juice", ingId:'ING-077', ingName:"Apple", usageQtyPerUnit:200.0, lineCost:40.0 },
-    { id:'BOM-223', productId:'P078', productName:"Apple Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-224', productId:'P079', productName:"Mango Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-225', productId:'P079', productName:"Mango Juice", ingId:'ING-026', ingName:"Dryfruit", usageQtyPerUnit:60.0, lineCost:16.8 },
-    { id:'BOM-226', productId:'P079', productName:"Mango Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-227', productId:'P080', productName:"Pomegranate Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-228', productId:'P080', productName:"Pomegranate Juice", ingId:'ING-078', ingName:"Pomegranate", usageQtyPerUnit:200.0, lineCost:26.0 },
-    { id:'BOM-229', productId:'P080', productName:"Pomegranate Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-230', productId:'P081', productName:"Watermelon Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-231', productId:'P081', productName:"Watermelon Juice", ingId:'ING-079', ingName:"Watermelon", usageQtyPerUnit:160.0, lineCost:4.0 },
-    { id:'BOM-232', productId:'P081', productName:"Watermelon Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-233', productId:'P082', productName:"Muskmelon Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-234', productId:'P082', productName:"Muskmelon Juice", ingId:'ING-080', ingName:"Muskmelon", usageQtyPerUnit:160.0, lineCost:8.0 },
-    { id:'BOM-235', productId:'P082', productName:"Muskmelon Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-236', productId:'P083', productName:"Lemon Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-237', productId:'P083', productName:"Lemon Juice", ingId:'ING-054', ingName:"Lemon", usageQtyPerUnit:1.0, lineCost:7.0 },
-    { id:'BOM-238', productId:'P083', productName:"Lemon Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-239', productId:'P084', productName:"Apple Beetroot Carrot Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-240', productId:'P084', productName:"Apple Beetroot Carrot Juice", ingId:'ING-026', ingName:"Dryfruit", usageQtyPerUnit:200.0, lineCost:20.0 },
-    { id:'BOM-241', productId:'P084', productName:"Apple Beetroot Carrot Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-242', productId:'P085', productName:"Pomegranate Carrot Beetroot Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-243', productId:'P085', productName:"Pomegranate Carrot Beetroot Juice", ingId:'ING-026', ingName:"Dryfruit", usageQtyPerUnit:200.0, lineCost:15.3333 },
-    { id:'BOM-244', productId:'P085', productName:"Pomegranate Carrot Beetroot Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-245', productId:'P086', productName:"Fig Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-246', productId:'P086', productName:"Fig Juice", ingId:'ING-026', ingName:"Dryfruit", usageQtyPerUnit:60.0, lineCost:18.0 },
-    { id:'BOM-247', productId:'P086', productName:"Fig Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-248', productId:'P087', productName:"Butter Fruit Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-249', productId:'P087', productName:"Butter Fruit Juice", ingId:'ING-091', ingName:"Butter", usageQtyPerUnit:60.0, lineCost:20.4 },
-    { id:'BOM-250', productId:'P087', productName:"Butter Fruit Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-251', productId:'P088', productName:"Tender Coconut Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:3.55 },
-    { id:'BOM-252', productId:'P088', productName:"Tender Coconut Juice", ingId:'ING-026', ingName:"Dryfruit", usageQtyPerUnit:60.0, lineCost:17.6 },
-    { id:'BOM-253', productId:'P088', productName:"Tender Coconut Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-254', productId:'P089', productName:"Lemon Mint Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-255', productId:'P089', productName:"Lemon Mint Juice", ingId:'ING-054', ingName:"Lemon", usageQtyPerUnit:1.0, lineCost:8.0 },
-    { id:'BOM-256', productId:'P089', productName:"Lemon Mint Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-    { id:'BOM-257', productId:'P090', productName:"Orange Juice", ingId:'ING-001', ingName:"Milk", usageQtyPerUnit:50.0, lineCost:0.0 },
-    { id:'BOM-258', productId:'P090', productName:"Orange Juice", ingId:'ING-082', ingName:"Orange", usageQtyPerUnit:200.0, lineCost:20.0 },
-    { id:'BOM-259', productId:'P090', productName:"Orange Juice", ingId:'ING-002', ingName:"Sugar", usageQtyPerUnit:30.0, lineCost:1.95 },
-  ];
+    { id:'BOM-001', productId:'P001', productName:'Veg Cutlet', ingId:'ING-058', ingName:'Veg Cutlet', usageQtyPerUnit:1.0, lineCost:10.0 },
+    { id:'BOM-002', productId:'P002', productName:'Veg Samosa', ingId:'ING-059', ingName:'Veg Samosa', usageQtyPerUnit:1.0, lineCost:8.13 },
+    { id:'BOM-003', productId:'P003', productName:'Paneer Roll', ingId:'ING-060', ingName:'Paneer Roll', usageQtyPerUnit:1.0, lineCost:15.5 },
+    { id:'BOM-004', productId:'P004', productName:'Veg Cheese Corn Nuggets - Regular', ingId:'ING-061', ingName:'V.C.Nuggets', usageQtyPerUnit:3.0, lineCost:19.5 },
+    { id:'BOM-005', productId:'P005', productName:'Veg Cheese Corn Nuggets - Special', ingId:'ING-061', ingName:'V.C.Nuggets', usageQtyPerUnit:5.0, lineCost:32.5 },
+    { id:'BOM-006', productId:'P006', productName:'Veg Cheese Ball - Regular', ingId:'ING-062', ingName:'V.C.Ball', usageQtyPerUnit:3.0, lineCost:19.5 },
+    { id:'BOM-007', productId:'P007', productName:'Veg Cheese Ball - Special', ingId:'ING-062', ingName:'V.C.Ball', usageQtyPerUnit:5.0, lineCost:32.5 },
+    { id:'BOM-008', productId:'P008', productName:'French Fry - Regular', ingId:'ING-063', ingName:'French Fry', usageQtyPerUnit:130.0, lineCost:15.86 },
+    { id:'BOM-009', productId:'P009', productName:'French Fry - Special', ingId:'ING-063', ingName:'French Fry', usageQtyPerUnit:220.0, lineCost:26.84 },
+    { id:'BOM-010', productId:'P010', productName:'Chicken Samosa', ingId:'ING-064', ingName:'Ch.Samosa', usageQtyPerUnit:2.0, lineCost:19.68 },
+    { id:'BOM-011', productId:'P011', productName:'Chicken Cutlet', ingId:'ING-065', ingName:'Ch.Cutilet', usageQtyPerUnit:1.0, lineCost:12.9 },
+    { id:'BOM-012', productId:'P012', productName:'Chicken Roll', ingId:'ING-066', ingName:'Ch.Roll', usageQtyPerUnit:1.0, lineCost:15.0 },
+    { id:'BOM-013', productId:'P013', productName:'Chicken Cheese Ball - Regular', ingId:'ING-067', ingName:'Ch.C.Ball', usageQtyPerUnit:3.0, lineCost:23.1 },
+    { id:'BOM-014', productId:'P014', productName:'Chicken Cheese Ball - Special', ingId:'ING-067', ingName:'Ch.C.Ball', usageQtyPerUnit:5.0, lineCost:38.5 },
+    { id:'BOM-015', productId:'P015', productName:'Chicken Popcorn', ingId:'ING-068', ingName:'Chi.Pop Corn', usageQtyPerUnit:120.0, lineCost:41.16 },
+    { id:'BOM-016', productId:'P016', productName:'Chicken Nuggets - Regular', ingId:'ING-069', ingName:'Chi.Nuggest', usageQtyPerUnit:3.0, lineCost:18.86 },
+    { id:'BOM-017', productId:'P017', productName:'Chicken Nuggets - SPECIAL', ingId:'ING-069', ingName:'Chi.Nuggest', usageQtyPerUnit:5.0, lineCost:31.43 },
+    { id:'BOM-018', productId:'P018', productName:'Chicken Lollipop - Regular', ingId:'ING-070', ingName:'Chi.Lollipop', usageQtyPerUnit:2.0, lineCost:35.84 },
+    { id:'BOM-019', productId:'P019', productName:'Chicken Lollipop - Special', ingId:'ING-070', ingName:'Chi.Lollipop', usageQtyPerUnit:5.0, lineCost:89.6 },
+    { id:'BOM-020', productId:'P020', productName:'Chicken Wings', ingId:'ING-071', ingName:'Chi.Wings', usageQtyPerUnit:125.0, lineCost:50.6 },
+    { id:'BOM-021', productId:'P021', productName:'Chicken Drumstick - Normal', ingId:'ING-072', ingName:'Chi.Drumstrick', usageQtyPerUnit:1.0, lineCost:48.21 },
+    { id:'BOM-022', productId:'P022', productName:'Chicken Drumstick - Medium', ingId:'ING-072', ingName:'Chi.Drumstrick', usageQtyPerUnit:2.0, lineCost:96.43 },
+    { id:'BOM-023', productId:'P023', productName:'Chicken Drumstick - Special', ingId:'ING-072', ingName:'Chi.Drumstrick', usageQtyPerUnit:5.0, lineCost:241.07 },
+    { id:'BOM-024', productId:'P024', productName:'Veg Momos', ingId:'ING-073', ingName:'Veg.Momos', usageQtyPerUnit:5.0, lineCost:30.48 },
+    { id:'BOM-025', productId:'P025', productName:'Paneer Momos', ingId:'ING-074', ingName:'Pan.Momos', usageQtyPerUnit:5.0, lineCost:40.95 },
+    { id:'BOM-026', productId:'P026', productName:'Chicken Momos', ingId:'ING-075', ingName:'Chi.Momos', usageQtyPerUnit:5.0, lineCost:35.24 },
+    { id:'BOM-027', productId:'P027', productName:'Chicken Tikka Momos', ingId:'ING-076', ingName:'Chi.Tikka Mo', usageQtyPerUnit:5.0, lineCost:39.05 },
+    { id:'BOM-028', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-032', ingName:'Bread (Sandwich)', usageQtyPerUnit:2.0, lineCost:10.0 },
+    { id:'BOM-029', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-030', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-031', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:50.0, lineCost:5.5 },
+    { id:'BOM-032', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-033', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-034', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-035', productId:'P028', productName:'Vegetable Sandwich', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:35.0, lineCost:3.43 },
+    { id:'BOM-036', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-032', ingName:'Bread (Sandwich)', usageQtyPerUnit:2.0, lineCost:10.0 },
+    { id:'BOM-037', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-038', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-039', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:50.0, lineCost:5.5 },
+    { id:'BOM-040', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-041', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-042', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-043', productId:'P029', productName:'Vegetable Cheese Sandwich', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:35.0, lineCost:3.43 },
+    { id:'BOM-044', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-032', ingName:'Bread (Sandwich)', usageQtyPerUnit:2.0, lineCost:10.0 },
+    { id:'BOM-045', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-046', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-047', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:30.0, lineCost:3.3 },
+    { id:'BOM-048', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-049', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-050', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-051', productId:'P030', productName:'Paneer Sandwich', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:35.0, lineCost:3.43 },
+    { id:'BOM-052', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-032', ingName:'Bread (Sandwich)', usageQtyPerUnit:2.0, lineCost:10.0 },
+    { id:'BOM-053', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-054', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-055', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:30.0, lineCost:3.3 },
+    { id:'BOM-056', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-057', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-058', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-059', productId:'P031', productName:'Paneer Cheese Sandwich', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:35.0, lineCost:3.43 },
+    { id:'BOM-060', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-032', ingName:'Bread (Sandwich)', usageQtyPerUnit:2.0, lineCost:10.0 },
+    { id:'BOM-061', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-062', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-063', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:50.0, lineCost:5.5 },
+    { id:'BOM-064', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-065', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-066', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-067', productId:'P032', productName:'Chicken Sandwich', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:35.0, lineCost:3.43 },
+    { id:'BOM-068', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-032', ingName:'Bread (Sandwich)', usageQtyPerUnit:2.0, lineCost:10.0 },
+    { id:'BOM-069', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-070', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-071', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:50.0, lineCost:5.5 },
+    { id:'BOM-072', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-073', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-074', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-075', productId:'P033', productName:'Peri Peri Chicken Sandwich', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:35.0, lineCost:3.43 },
+    { id:'BOM-076', productId:'P034', productName:'Bread Omelette', ingId:'ING-096', ingName:'Bread (Omelette)', usageQtyPerUnit:2.0, lineCost:4.0 },
+    { id:'BOM-077', productId:'P034', productName:'Bread Omelette', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-078', productId:'P034', productName:'Bread Omelette', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-079', productId:'P034', productName:'Bread Omelette', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:50.0, lineCost:5.5 },
+    { id:'BOM-080', productId:'P034', productName:'Bread Omelette', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-081', productId:'P034', productName:'Bread Omelette', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-082', productId:'P034', productName:'Bread Omelette', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-083', productId:'P034', productName:'Bread Omelette', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:35.0, lineCost:3.43 },
+    { id:'BOM-084', productId:'P035', productName:'Peri Peri Noodles', ingId:'ING-045', ingName:'Noodles', usageQtyPerUnit:1.5, lineCost:22.5 },
+    { id:'BOM-085', productId:'P035', productName:'Peri Peri Noodles', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-086', productId:'P035', productName:'Peri Peri Noodles', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-087', productId:'P035', productName:'Peri Peri Noodles', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:50.0, lineCost:5.5 },
+    { id:'BOM-088', productId:'P035', productName:'Peri Peri Noodles', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-089', productId:'P035', productName:'Peri Peri Noodles', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-090', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-045', ingName:'Noodles', usageQtyPerUnit:1.5, lineCost:22.5 },
+    { id:'BOM-091', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-033', ingName:'Onion', usageQtyPerUnit:40.0, lineCost:2.4 },
+    { id:'BOM-092', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-034', ingName:'Tomato', usageQtyPerUnit:30.0, lineCost:1.5 },
+    { id:'BOM-093', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-040', ingName:'Corn', usageQtyPerUnit:50.0, lineCost:5.5 },
+    { id:'BOM-094', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-039', ingName:'Carrot', usageQtyPerUnit:50.0, lineCost:2.5 },
+    { id:'BOM-095', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-041', ingName:'Capsicum', usageQtyPerUnit:15.0, lineCost:3.0 },
+    { id:'BOM-096', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-036', ingName:'Mayo', usageQtyPerUnit:15.0, lineCost:1.65 },
+    { id:'BOM-097', productId:'P036', productName:'CHAI\'BEE\' SPECIAL Cheese Noodles', ingId:'ING-035', ingName:'Sauce', usageQtyPerUnit:15.0, lineCost:1.47 },
+    { id:'BOM-098', productId:'P037', productName:'Mango Lassi', ingId:'ING-056', ingName:'Curd', usageQtyPerUnit:150.0, lineCost:10.35 },
+    { id:'BOM-099', productId:'P037', productName:'Mango Lassi', ingId:'ING-014', ingName:'Mango Pulp', usageQtyPerUnit:50.0, lineCost:14.0 },
+    { id:'BOM-100', productId:'P037', productName:'Mango Lassi', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-101', productId:'P038', productName:'Strawberry Lassi', ingId:'ING-056', ingName:'Curd', usageQtyPerUnit:150.0, lineCost:10.35 },
+    { id:'BOM-102', productId:'P038', productName:'Strawberry Lassi', ingId:'ING-015', ingName:'Strawberry Pulp', usageQtyPerUnit:50.0, lineCost:14.0 },
+    { id:'BOM-103', productId:'P038', productName:'Strawberry Lassi', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-104', productId:'P039', productName:'Sweet Lassi', ingId:'ING-056', ingName:'Curd', usageQtyPerUnit:150.0, lineCost:10.35 },
+    { id:'BOM-105', productId:'P039', productName:'Sweet Lassi', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-106', productId:'P040', productName:'Mint Lassi', ingId:'ING-056', ingName:'Curd', usageQtyPerUnit:150.0, lineCost:10.35 },
+    { id:'BOM-107', productId:'P040', productName:'Mint Lassi', ingId:'ING-092', ingName:'Green Mint', usageQtyPerUnit:30.0, lineCost:8.8 },
+    { id:'BOM-108', productId:'P040', productName:'Mint Lassi', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-109', productId:'P041', productName:'Rose Lassi', ingId:'ING-056', ingName:'Curd', usageQtyPerUnit:150.0, lineCost:10.35 },
+    { id:'BOM-110', productId:'P041', productName:'Rose Lassi', ingId:'ING-031', ingName:'Rose Milk', usageQtyPerUnit:50.0, lineCost:10.15 },
+    { id:'BOM-111', productId:'P041', productName:'Rose Lassi', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-112', productId:'P042', productName:'Vanilla Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-113', productId:'P042', productName:'Vanilla Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-114', productId:'P042', productName:'Vanilla Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-115', productId:'P043', productName:'Mango Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-116', productId:'P043', productName:'Mango Milkshake', ingId:'ING-011', ingName:'Mango Ice Cream', usageQtyPerUnit:100.0, lineCost:10.75 },
+    { id:'BOM-117', productId:'P043', productName:'Mango Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-118', productId:'P044', productName:'Strawberry Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-119', productId:'P044', productName:'Strawberry Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-120', productId:'P044', productName:'Strawberry Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-121', productId:'P045', productName:'Chocolate Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-122', productId:'P045', productName:'Chocolate Milkshake', ingId:'ING-012', ingName:'Chocolate Ice Cream', usageQtyPerUnit:100.0, lineCost:10.25 },
+    { id:'BOM-123', productId:'P045', productName:'Chocolate Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-124', productId:'P046', productName:'Chai Bee Special Tender Coconut Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-125', productId:'P046', productName:'Chai Bee Special Tender Coconut Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-126', productId:'P046', productName:'Chai Bee Special Tender Coconut Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-127', productId:'P047', productName:'Oreo Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-128', productId:'P047', productName:'Oreo Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-129', productId:'P047', productName:'Oreo Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-130', productId:'P048', productName:'KitKat Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-131', productId:'P048', productName:'KitKat Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-132', productId:'P048', productName:'KitKat Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-133', productId:'P049', productName:'Kiwi Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-134', productId:'P049', productName:'Kiwi Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-135', productId:'P049', productName:'Kiwi Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-136', productId:'P050', productName:'Butterscotch Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-137', productId:'P050', productName:'Butterscotch Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-138', productId:'P050', productName:'Butterscotch Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-139', productId:'P051', productName:'Dry Fruit Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-140', productId:'P051', productName:'Dry Fruit Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-141', productId:'P051', productName:'Dry Fruit Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-142', productId:'P052', productName:'Peanut Butter Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-143', productId:'P052', productName:'Peanut Butter Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-144', productId:'P052', productName:'Peanut Butter Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-145', productId:'P053', productName:'Butter Fruit Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-146', productId:'P053', productName:'Butter Fruit Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-147', productId:'P053', productName:'Butter Fruit Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-148', productId:'P054', productName:'Fig Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-149', productId:'P054', productName:'Fig Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-150', productId:'P054', productName:'Fig Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-151', productId:'P055', productName:'Blueberry Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-152', productId:'P055', productName:'Blueberry Milkshake', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-153', productId:'P055', productName:'Blueberry Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-154', productId:'P056', productName:'Coffee Milkshake', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-155', productId:'P056', productName:'Coffee Milkshake', ingId:'ING-012', ingName:'Chocolate Ice Cream', usageQtyPerUnit:100.0, lineCost:10.25 },
+    { id:'BOM-156', productId:'P056', productName:'Coffee Milkshake', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-157', productId:'P057', productName:'Cold Coffee', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-158', productId:'P057', productName:'Cold Coffee', ingId:'ING-012', ingName:'Chocolate Ice Cream', usageQtyPerUnit:100.0, lineCost:10.25 },
+    { id:'BOM-159', productId:'P057', productName:'Cold Coffee', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-160', productId:'P058', productName:'Rose Milk', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:150.0, lineCost:10.65 },
+    { id:'BOM-161', productId:'P058', productName:'Rose Milk', ingId:'ING-010', ingName:'Vanilla Ice Cream', usageQtyPerUnit:100.0, lineCost:7.75 },
+    { id:'BOM-162', productId:'P058', productName:'Rose Milk', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-163', productId:'P059', productName:'Blue Mojito', ingId:'ING-049', ingName:'Blue-Moji', usageQtyPerUnit:30.0, lineCost:11.43 },
+    { id:'BOM-164', productId:'P059', productName:'Blue Mojito', ingId:'ING-086', ingName:'Sprite', usageQtyPerUnit:150.0, lineCost:6.0 },
+    { id:'BOM-165', productId:'P059', productName:'Blue Mojito', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:40.0, lineCost:5.09 },
+    { id:'BOM-166', productId:'P060', productName:'Lime Mint Mojito', ingId:'ING-050', ingName:'Limemint-Moji', usageQtyPerUnit:30.0, lineCost:11.43 },
+    { id:'BOM-167', productId:'P060', productName:'Lime Mint Mojito', ingId:'ING-086', ingName:'Sprite', usageQtyPerUnit:150.0, lineCost:6.0 },
+    { id:'BOM-168', productId:'P060', productName:'Lime Mint Mojito', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:40.0, lineCost:5.09 },
+    { id:'BOM-169', productId:'P061', productName:'Strawberry Mojito', ingId:'ING-051', ingName:'Strberry-Moji', usageQtyPerUnit:30.0, lineCost:8.8 },
+    { id:'BOM-170', productId:'P061', productName:'Strawberry Mojito', ingId:'ING-086', ingName:'Sprite', usageQtyPerUnit:150.0, lineCost:6.0 },
+    { id:'BOM-171', productId:'P061', productName:'Strawberry Mojito', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:40.0, lineCost:5.09 },
+    { id:'BOM-172', productId:'P062', productName:'Mango Mojito', ingId:'ING-052', ingName:'Mango(Mazza)', usageQtyPerUnit:150.0, lineCost:9.38 },
+    { id:'BOM-173', productId:'P062', productName:'Mango Mojito', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:40.0, lineCost:5.09 },
+    { id:'BOM-174', productId:'P063', productName:'Watermelon Mojito', ingId:'ING-053', ingName:'Watermelon-Moji', usageQtyPerUnit:30.0, lineCost:8.8 },
+    { id:'BOM-175', productId:'P063', productName:'Watermelon Mojito', ingId:'ING-086', ingName:'Sprite', usageQtyPerUnit:150.0, lineCost:6.0 },
+    { id:'BOM-176', productId:'P063', productName:'Watermelon Mojito', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:40.0, lineCost:5.09 },
+    { id:'BOM-177', productId:'P064', productName:'Classic Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-178', productId:'P064', productName:'Classic Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-179', productId:'P064', productName:'Classic Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-180', productId:'P065', productName:'Ginger Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-181', productId:'P065', productName:'Ginger Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-182', productId:'P065', productName:'Ginger Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-183', productId:'P066', productName:'Cardamom Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-184', productId:'P066', productName:'Cardamom Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-185', productId:'P066', productName:'Cardamom Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-186', productId:'P067', productName:'Masala Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-187', productId:'P067', productName:'Masala Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-188', productId:'P067', productName:'Masala Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-189', productId:'P068', productName:'Black Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-190', productId:'P068', productName:'Black Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-191', productId:'P068', productName:'Black Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-192', productId:'P069', productName:'Lemon Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-193', productId:'P069', productName:'Lemon Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-194', productId:'P069', productName:'Lemon Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-195', productId:'P070', productName:'Ginger Lemon Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-196', productId:'P070', productName:'Ginger Lemon Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-197', productId:'P070', productName:'Ginger Lemon Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-198', productId:'P071', productName:'Filter Coffee', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-199', productId:'P071', productName:'Filter Coffee', ingId:'ING-004', ingName:'Coffee Powder', usageQtyPerUnit:6.25, lineCost:3.88 },
+    { id:'BOM-200', productId:'P071', productName:'Filter Coffee', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-201', productId:'P072', productName:'Black Coffee', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-202', productId:'P072', productName:'Black Coffee', ingId:'ING-004', ingName:'Coffee Powder', usageQtyPerUnit:6.0, lineCost:3.72 },
+    { id:'BOM-203', productId:'P072', productName:'Black Coffee', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-204', productId:'P073', productName:'Milk', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:80.0, lineCost:5.68 },
+    { id:'BOM-205', productId:'P073', productName:'Milk', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:5.0, lineCost:2.05 },
+    { id:'BOM-206', productId:'P073', productName:'Milk', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-207', productId:'P074', productName:'Horlicks', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-208', productId:'P074', productName:'Horlicks', ingId:'ING-008', ingName:'Horlicks', usageQtyPerUnit:10.0, lineCost:5.3 },
+    { id:'BOM-209', productId:'P074', productName:'Horlicks', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-210', productId:'P075', productName:'Boost', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:60.0, lineCost:4.26 },
+    { id:'BOM-211', productId:'P075', productName:'Boost', ingId:'ING-009', ingName:'Boost', usageQtyPerUnit:10.0, lineCost:4.85 },
+    { id:'BOM-212', productId:'P075', productName:'Boost', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:15.0, lineCost:0.98 },
+    { id:'BOM-213', productId:'P076', productName:'Parcel Tea', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:120.0, lineCost:8.52 },
+    { id:'BOM-214', productId:'P076', productName:'Parcel Tea', ingId:'ING-003', ingName:'Tea Powder', usageQtyPerUnit:10.0, lineCost:4.1 },
+    { id:'BOM-215', productId:'P076', productName:'Parcel Tea', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-216', productId:'P077', productName:'Parcel Coffee', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:120.0, lineCost:8.52 },
+    { id:'BOM-217', productId:'P077', productName:'Parcel Coffee', ingId:'ING-004', ingName:'Coffee Powder', usageQtyPerUnit:12.0, lineCost:7.44 },
+    { id:'BOM-218', productId:'P077', productName:'Parcel Coffee', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-219', productId:'P078', productName:'Apple Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-220', productId:'P078', productName:'Apple Juice', ingId:'ING-077', ingName:'Apple', usageQtyPerUnit:200.0, lineCost:40.0 },
+    { id:'BOM-221', productId:'P078', productName:'Apple Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-222', productId:'P079', productName:'Mango Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-223', productId:'P079', productName:'Mango Juice', ingId:'ING-014', ingName:'Mango Pulp', usageQtyPerUnit:60.0, lineCost:16.8 },
+    { id:'BOM-224', productId:'P079', productName:'Mango Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-225', productId:'P080', productName:'Pomegranate Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-226', productId:'P080', productName:'Pomegranate Juice', ingId:'ING-078', ingName:'Pomegranate', usageQtyPerUnit:200.0, lineCost:26.0 },
+    { id:'BOM-227', productId:'P080', productName:'Pomegranate Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-228', productId:'P081', productName:'Watermelon Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-229', productId:'P081', productName:'Watermelon Juice', ingId:'ING-079', ingName:'Watermelon', usageQtyPerUnit:160.0, lineCost:4.0 },
+    { id:'BOM-230', productId:'P081', productName:'Watermelon Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-231', productId:'P082', productName:'Muskmelon Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-232', productId:'P082', productName:'Muskmelon Juice', ingId:'ING-080', ingName:'Muskmelon', usageQtyPerUnit:160.0, lineCost:8.0 },
+    { id:'BOM-233', productId:'P082', productName:'Muskmelon Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-234', productId:'P083', productName:'Lemon Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-235', productId:'P083', productName:'Lemon Juice', ingId:'ING-054', ingName:'Lemon', usageQtyPerUnit:1.0, lineCost:7.0 },
+    { id:'BOM-236', productId:'P083', productName:'Lemon Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-237', productId:'P084', productName:'Apple Beetroot Carrot Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-238', productId:'P084', productName:'Apple Beetroot Carrot Juice', ingId:'ING-081', ingName:'Beetroot', usageQtyPerUnit:200.0, lineCost:20.0 },
+    { id:'BOM-239', productId:'P084', productName:'Apple Beetroot Carrot Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-240', productId:'P085', productName:'Pomegranate Carrot Beetroot Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-241', productId:'P085', productName:'Pomegranate Carrot Beetroot Juice', ingId:'ING-081', ingName:'Beetroot', usageQtyPerUnit:200.0, lineCost:15.33 },
+    { id:'BOM-242', productId:'P085', productName:'Pomegranate Carrot Beetroot Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-243', productId:'P086', productName:'Fig Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-244', productId:'P086', productName:'Fig Juice', ingId:'ING-029', ingName:'Fig Pulp', usageQtyPerUnit:60.0, lineCost:18.0 },
+    { id:'BOM-245', productId:'P086', productName:'Fig Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-246', productId:'P087', productName:'Butter Fruit Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-247', productId:'P087', productName:'Butter Fruit Juice', ingId:'ING-028', ingName:'Butter Fruit Pulp', usageQtyPerUnit:60.0, lineCost:20.4 },
+    { id:'BOM-248', productId:'P087', productName:'Butter Fruit Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-249', productId:'P088', productName:'Tender Coconut Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-250', productId:'P088', productName:'Tender Coconut Juice', ingId:'ING-017', ingName:'Tender Coconut Pulp', usageQtyPerUnit:60.0, lineCost:17.6 },
+    { id:'BOM-251', productId:'P088', productName:'Tender Coconut Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-252', productId:'P089', productName:'Lemon Mint Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-253', productId:'P089', productName:'Lemon Mint Juice', ingId:'ING-054', ingName:'Lemon', usageQtyPerUnit:1.0, lineCost:8.0 },
+    { id:'BOM-254', productId:'P089', productName:'Lemon Mint Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+    { id:'BOM-255', productId:'P090', productName:'Orange Juice', ingId:'ING-001', ingName:'Milk', usageQtyPerUnit:50.0, lineCost:3.55 },
+    { id:'BOM-256', productId:'P090', productName:'Orange Juice', ingId:'ING-082', ingName:'Orange', usageQtyPerUnit:200.0, lineCost:20.0 },
+    { id:'BOM-257', productId:'P090', productName:'Orange Juice', ingId:'ING-002', ingName:'Sugar', usageQtyPerUnit:30.0, lineCost:1.95 },
+];
 
 document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
@@ -553,27 +553,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // Full 90-item product catalog, extracted from Chai_Bee_Consolidated_Master.xlsx
     // (Product Master + Costing sheets). Category filter chips on Menu Costing are
     // generated from the distinct categories found here.
-    // Overhead cost breakdown (gas, oil, wastage, other overheads — the same
-    // per-item cost components the owner's Excel workbook tracked alongside raw
-    // ingredient cost) isn't itemised per-product in the source workbook, so
-    // these start at 0 and landedCost = rawCost only, exactly matching Code.gs's
-    // seed behaviour. They're editable from the Menu Costing page; once set,
-    // landedCost = rawCost (BOM total) + gas + oil + wastage + overheads.
-    products: SEED_PRODUCTS.map((p, idx) => ({
-      id: p.id,
-      name: p.name,
-      category: p.category,
-      landedCost: p.landedCost,
-      rawCost: p.landedCost,
-      gasCost: 0,
-      oilCost: 0,
-      wastageCost: 0,
-      overheadsCost: 0,
-      sellingPrice: p.price,
-      marginRs: Math.round((p.price - p.landedCost) * 100) / 100,
-      marginPct: p.landedCost > 0 ? Math.round(((p.price - p.landedCost) / p.landedCost) * 10000) / 100 : 0,
-      dailyOrders: 0
-    })),
+    // Raw Cost comes from the real BOM (SEED_RECIPE_BOM, above) — the sum of
+    // every ingredient line for that product — not from the workbook's flat
+    // landedCost figure. The owner's Excel workbook didn't itemise gas/oil/
+    // wastage/overheads per product separately from landed cost, so the gap
+    // between landedCost and the real BOM-derived rawCost is folded into
+    // overheadsCost as a single starting bucket (never negative — for the
+    // couple of products where a since-corrected BOM line now makes rawCost
+    // exceed the old landedCost, landedCost is raised to match rawCost with
+    // overheadsCost at 0, rather than showing an impossible negative overhead).
+    // Everything here is still editable from the Menu Costing page; once
+    // edited, landedCost = rawCost (BOM total) + gas + oil + wastage + overheads.
+    products: SEED_PRODUCTS.map((p, idx) => {
+      const bomRawCost = Math.round(
+        SEED_RECIPE_BOM.filter((r) => r.productId === p.id).reduce((sum, r) => sum + r.lineCost, 0) * 100
+      ) / 100;
+      const impliedOverhead = Math.round((p.landedCost - bomRawCost) * 100) / 100;
+      const overheadsCost = Math.max(0, impliedOverhead);
+      const landedCost = impliedOverhead < 0 ? bomRawCost : p.landedCost;
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        landedCost,
+        rawCost: bomRawCost,
+        gasCost: 0,
+        oilCost: 0,
+        wastageCost: 0,
+        overheadsCost,
+        sellingPrice: p.price,
+        marginRs: Math.round((p.price - landedCost) * 100) / 100,
+        marginPct: landedCost > 0 ? Math.round(((p.price - landedCost) / landedCost) * 10000) / 100 : 0,
+        dailyOrders: 0
+      };
+    }),
     selectedProductId: 'P064',
     productCategoryFilter: 'All',
     // Real 22-day October sales totals, extracted from the café's own workbook.
@@ -2000,14 +2013,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="eod-qty-grid">
                   ${state.products
                     .filter((p) => p.category === cat)
-                    .map(
-                      (p) => `
-                    <label class="eod-qty-row" for="eodQty_${esc(p.id)}">
-                      <span class="eod-qty-name">${esc(p.name)}</span>
+                    .map((p) => {
+                      const hasBom = (state.recipeBom || []).some((r) => r.productId === p.id);
+                      return `
+                    <label class="eod-qty-row ${hasBom ? '' : 'eod-qty-row--no-bom'}" for="eodQty_${esc(p.id)}">
+                      <span class="eod-qty-name">
+                        ${esc(p.name)}
+                        ${
+                          hasBom
+                            ? ''
+                            : `<button type="button" class="status-pill status-pill--orange eod-no-bom-badge" data-action="goto-recipe-builder" data-id="${esc(p.id)}" title="No recipe set up yet — stock won't be deducted when this sells. Click to add ingredients.">No recipe — fix</button>`
+                        }
+                      </span>
                       <input class="form-input tabular-nums eod-qty-input" type="number" min="0" step="1" id="eodQty_${esc(p.id)}" data-product-id="${esc(p.id)}" value="${draft[p.id] || ''}" placeholder="0" />
                     </label>
-                  `
-                    )
+                  `;
+                    })
                     .join('')}
                 </div>
               </div>
@@ -2618,7 +2639,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             ${
               bomRows.length === 0
-                ? `<p class="table-empty-note">No per-ingredient recipe is recorded for this item yet.</p>`
+                ? `<p class="table-empty-note">No per-ingredient recipe is recorded for this item yet. Add the ingredients it's made from below — their cost is picked up straight from Inventory.</p>`
                 : `
             <div class="table-responsive">
               <table class="items-table">
@@ -2648,8 +2669,9 @@ document.addEventListener('DOMContentLoaded', () => {
                           data-bom-field="unitCost" data-bom-id="${esc(r.id)}" value="${ingUnitCost}" />
                       </td>
                       <td class="text-right tabular-nums">₹ ${r.lineCost.toFixed(2)}</td>
-                      <td class="text-right">
+                      <td class="text-right" style="white-space:nowrap;">
                         <button type="button" class="table-action-btn" data-action="save-bom-row" data-bom-id="${esc(r.id)}">Save</button>
+                        <button type="button" class="table-action-btn" data-action="delete-bom-row" data-bom-id="${esc(r.id)}" title="Remove ${esc(r.ingName)} from this recipe">✕</button>
                       </td>
                     </tr>
                   `;
@@ -2668,8 +2690,58 @@ document.addEventListener('DOMContentLoaded', () => {
             <p class="item-cat" style="margin-top:10px;font-size:11px;">Editing an ingredient's cost or usage here recomputes this product's Raw Cost, Landed Cost and Margin automatically, and (once connected to the Cloud) updates every other recipe that shares the same ingredient.</p>
             `
             }
+
+            <div class="bom-add-row-block" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-subtle);">
+              <h3 class="eod-category-heading" style="margin-bottom:10px;">Add Ingredient from Inventory</h3>
+              ${
+                state.inventory.length === 0
+                  ? `<p class="table-empty-note">No ingredients in Inventory yet — add stock items there first.</p>`
+                  : `
+              <form id="addBomRowForm" class="form-grid" data-product-id="${esc(prod.id)}">
+                <div class="form-field">
+                  <label class="form-label" for="addBomIngSelect">Ingredient</label>
+                  <select class="form-input" id="addBomIngSelect">
+                    ${state.inventory
+                      .filter((i) => !bomRows.some((r) => r.ingId === i.sku))
+                      .map((i) => `<option value="${esc(i.sku)}" data-unit-cost="${i.unitCost}">${esc(i.name)} (₹${i.unitCost.toFixed(2)}/base unit)</option>`)
+                      .join('')}
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label class="form-label" for="addBomUsageInput">Qty used per unit sold</label>
+                  <input class="form-input tabular-nums" id="addBomUsageInput" type="number" min="0.01" step="0.01" placeholder="e.g. 100 (ml/g/pcs)" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label">Auto-calculated Line Cost (₹)</label>
+                  <input class="form-input tabular-nums" id="addBomLineCostPreview" type="text" value="₹ 0.00" disabled />
+                </div>
+                <div class="form-field form-field--full">
+                  <button type="submit" class="primary-cta-pill" style="width:100%;justify-content:center;">Add to Recipe</button>
+                </div>
+              </form>
+              <p class="item-cat" style="margin-top:8px;font-size:11px;">Pick any ingredient already in your Inventory and enter how much of it one unit of ${esc(prod.name)} uses — the cost is calculated for you from that ingredient's current Inventory price, never typed in by hand.</p>
+              `
+              }
+            </div>
           </section>
         `;
+        // Live-calculate the preview Line Cost the moment the owner picks an
+        // ingredient or types a usage quantity, so they see cost = usage x
+        // ingredient's live Inventory unit cost before ever hitting Add —
+        // never a cost they type in themselves.
+        const addBomIngSelect = document.getElementById('addBomIngSelect');
+        const addBomUsageInput = document.getElementById('addBomUsageInput');
+        const addBomLineCostPreview = document.getElementById('addBomLineCostPreview');
+        const recalcAddBomPreview = () => {
+          if (!addBomIngSelect || !addBomUsageInput || !addBomLineCostPreview) return;
+          const opt = addBomIngSelect.options[addBomIngSelect.selectedIndex];
+          const unitCost = opt ? Number(opt.getAttribute('data-unit-cost')) || 0 : 0;
+          const usage = Number(addBomUsageInput.value) || 0;
+          addBomLineCostPreview.value = `₹ ${(usage * unitCost).toFixed(2)}`;
+        };
+        if (addBomIngSelect) addBomIngSelect.addEventListener('change', recalcAddBomPreview);
+        if (addBomUsageInput) addBomUsageInput.addEventListener('input', recalcAddBomPreview);
+        recalcAddBomPreview();
         break;
       }
 
@@ -4370,6 +4442,15 @@ document.addEventListener('DOMContentLoaded', () => {
           renderModulePage('menu-costing');
           break;
 
+        case 'goto-recipe-builder':
+          // The item can still be sold with no recipe (EOD entry warns but never
+          // blocks), but the owner can jump straight to adding its ingredients —
+          // Inventory just won't be deducted for it until a recipe exists.
+          state.selectedProductId = actionEl.getAttribute('data-id') || state.selectedProductId;
+          closeModal();
+          navigateTo('menu-costing');
+          break;
+
         case 'filter-products':
           state.productCategoryFilter = actionEl.getAttribute('data-category') || 'All';
           renderModulePage('menu-costing');
@@ -4423,6 +4504,36 @@ document.addEventListener('DOMContentLoaded', () => {
           apiCall('updateRecipeBomCost', { bomId, usageQtyPerUnit: newUsage, unitCost: newUnitCost });
           renderModulePage('menu-costing');
           showToast(`${bom.ingName} cost updated for ${bom.productName}`);
+          if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
+            setTimeout(() => syncFromSheet({ silent: true }), 1500);
+          }
+          break;
+        }
+
+        case 'delete-bom-row': {
+          const bomId = actionEl.getAttribute('data-bom-id');
+          const bomIdx = (state.recipeBom || []).findIndex((r) => r.id === bomId);
+          if (bomIdx === -1) break;
+          const bom = state.recipeBom[bomIdx];
+
+          state.recipeBom.splice(bomIdx, 1);
+
+          // Recompute the parent product's Raw Cost / Landed Cost / Margin from
+          // whatever BOM rows remain, same formula as save-bom-row above.
+          const prod = state.products.find((p) => p.id === bom.productId);
+          if (prod) {
+            const rawCostTotal = (state.recipeBom || [])
+              .filter((r) => r.productId === prod.id)
+              .reduce((sum, r) => sum + r.lineCost, 0);
+            prod.rawCost = Math.round(rawCostTotal * 100) / 100;
+            prod.landedCost = Math.round((prod.rawCost + (prod.gasCost || 0) + (prod.oilCost || 0) + (prod.wastageCost || 0) + (prod.overheadsCost || 0)) * 100) / 100;
+            prod.marginRs = Math.round((prod.sellingPrice - prod.landedCost) * 100) / 100;
+            prod.marginPct = prod.landedCost > 0 ? Math.round((prod.marginRs / prod.landedCost) * 10000) / 100 : 0;
+          }
+
+          apiCall('deleteRecipeBomRow', { bomId });
+          renderModulePage('menu-costing');
+          showToast(`${bom.ingName} removed from ${bom.productName}'s recipe`);
           if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
             setTimeout(() => syncFromSheet({ silent: true }), 1500);
           }
@@ -4780,6 +4891,61 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
           setTimeout(() => syncFromSheet({ silent: true }), 1500);
         }
+      }
+    } else if (form.id === 'addBomRowForm') {
+      // Owner-built recipe row: the ingredient and its cost both come straight
+      // from live Inventory (the <select>'s data-unit-cost attribute, set from
+      // state.inventory at render time) — the owner only ever types a usage
+      // quantity, never a cost. Line_Cost = usage x that ingredient's current
+      // Inventory unit cost, exactly as the recipe-builder preview already showed.
+      e.preventDefault();
+      const productId = form.getAttribute('data-product-id');
+      const prod = state.products.find((p) => p.id === productId);
+      const select = document.getElementById('addBomIngSelect');
+      const usageInput = document.getElementById('addBomUsageInput');
+      if (!prod || !select || !select.value) {
+        showToast('Pick an ingredient first');
+        return;
+      }
+      const usageQty = Number(usageInput.value) || 0;
+      if (usageQty <= 0) {
+        showToast('Enter how much of this ingredient one unit sold uses');
+        return;
+      }
+      const ingId = select.value;
+      if ((state.recipeBom || []).some((r) => r.productId === prod.id && r.ingId === ingId)) {
+        showToast('That ingredient is already on this recipe — edit its row instead');
+        return;
+      }
+      const ing = state.inventory.find((i) => i.sku === ingId);
+      if (!ing) return;
+
+      const lineCost = Math.round(usageQty * ing.unitCost * 100) / 100;
+      const bomId = `BOM-${new Date().getTime()}`;
+      if (!state.recipeBom) state.recipeBom = [];
+      state.recipeBom.push({
+        id: bomId,
+        productId: prod.id,
+        productName: prod.name,
+        ingId: ing.sku,
+        ingName: ing.name,
+        usageQtyPerUnit: usageQty,
+        lineCost
+      });
+
+      const rawCostTotal = state.recipeBom
+        .filter((r) => r.productId === prod.id)
+        .reduce((sum, r) => sum + r.lineCost, 0);
+      prod.rawCost = Math.round(rawCostTotal * 100) / 100;
+      prod.landedCost = Math.round((prod.rawCost + (prod.gasCost || 0) + (prod.oilCost || 0) + (prod.wastageCost || 0) + (prod.overheadsCost || 0)) * 100) / 100;
+      prod.marginRs = Math.round((prod.sellingPrice - prod.landedCost) * 100) / 100;
+      prod.marginPct = prod.landedCost > 0 ? Math.round((prod.marginRs / prod.landedCost) * 10000) / 100 : 0;
+
+      apiCall('addRecipeBomRow', { productId: prod.id, productName: prod.name, ingId: ing.sku, ingName: ing.name, usageQtyPerUnit: usageQty });
+      renderModulePage('menu-costing');
+      showToast(`${ing.name} added to ${prod.name}'s recipe — ₹${lineCost.toFixed(2)}/unit`);
+      if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
+        setTimeout(() => syncFromSheet({ silent: true }), 1500);
       }
     } else if (form.id === 'settingsForm' || form.id === 'licensesForm' || form.id === 'ownerSettingsForm' || form.id === 'syncSettingsForm' || form.id === 'alertSettingsForm' || form.id === 'opsSettingsForm') {
       e.preventDefault();
