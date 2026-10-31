@@ -6075,6 +6075,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!prod) return;
             const lineGross = c.qty * c.unitPrice;
             const lineNet = Math.round(lineGross * discountFactor * 100) / 100;
+            const lineCost = Math.round(c.qty * prod.landedCost * 100) / 100;
             cartCost += c.qty * prod.landedCost;
             cartQtyTotal += c.qty;
 
@@ -6095,6 +6096,27 @@ document.addEventListener('DOMContentLoaded', () => {
               if (ing) {
                 ing.stock = Math.max(0, Math.round((ing.stock - r.usageQtyPerUnit * c.qty) * 100) / 100);
               }
+            });
+
+            // Checkout used to only bump day-level totals (dailySummary),
+            // never per-product attribution — so Best Seller, Top Selling
+            // Items and the Sales-by-Category donut (all driven by
+            // productSalesLog / product.dailyOrders) stayed stuck on
+            // whatever the last EOD entry left them at, even though a real
+            // counter sale had just happened. EOD already keeps these two
+            // in sync for its own entries (see the eodEntryForm handler
+            // below); mirroring that here for a counter sale closes the gap.
+            prod.dailyOrders = (prod.dailyOrders || 0) + c.qty;
+            if (!state.productSalesLog) state.productSalesLog = [];
+            state.productSalesLog.push({
+              isoDate: today,
+              date: new Date(today).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+              productId: prod.id,
+              category: prod.category,
+              qty: c.qty,
+              costValue: lineCost,
+              netSales: lineNet,
+              dow: new Date(today).getDay()
             });
           });
 
@@ -6132,6 +6154,11 @@ document.addEventListener('DOMContentLoaded', () => {
             state.todayRevenue = latestDay.sales;
             state.todayOrders = latestDay.qty;
           }
+          // The Net Profit KPI card was never recalculated after a counter
+          // checkout (only EOD entry and sync did this), so it stayed stuck
+          // at whatever value was last set — same formula EOD/sync use
+          // (revenue minus recorded expenses, floored at 0) for consistency.
+          state.netProfit = Math.max(0, state.totalRevenue - state.totalExpenses);
 
           state.lastReceipt = {
             orderId,
@@ -6168,6 +6195,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
           renderModulePage('new-sale');
           syncDashboardKPIs();
+          // renderAllCharts() draws the Sales-by-Category donut, which reads
+          // product.dailyOrders directly (not through syncDashboardKPIs) —
+          // EOD entry already calls this after saving; checkout didn't,
+          // which is why that chart stayed on "No category sales yet" after
+          // a counter sale even though Best Seller/Top Items (both driven
+          // by syncDashboardKPIs) picked up the fix above correctly.
+          renderAllCharts();
           showToast(`Bill ${orderId} recorded — ${formatINR(Math.round(cartTotal))}`);
           openReceiptModal(state.lastReceipt);
           if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
