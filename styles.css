@@ -731,7 +731,21 @@ p {
   align-items: center;
   gap: var(--space-3);
   position: relative;
-  z-index: 45;
+  /* .topbar and .hero-row (a page's own greeting/filter-tabs row, z-index: 70
+     — see its comment) are SIBLINGS under #mainContent, which is
+     position:static and so forms no stacking context of its own. That means
+     z-index only ever gets compared directly between .topbar and .hero-row
+     themselves — raising a descendant like .notification-drawer can never
+     escape that: a child's z-index is capped at its own ancestor's level
+     once compared against an element outside that ancestor. .topbar's old
+     z-index: 45 lost outright to .hero-row's 70, so the notification drawer
+     rendered BEHIND a page's filter-tabs/category chips no matter how high
+     its own z-index was set. 75 fixes this at the actual source: .topbar
+     (and everything inside it, including the notification drawer and search
+     popover) now outranks .hero-row, while staying below the modal backdrop
+     (500), toast (600) and PWA banner (700) tiers, which should still cover
+     it when those are open. */
+  z-index: 75;
 }
 
 .search-wrapper {
@@ -2741,7 +2755,19 @@ p {
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  z-index: 60;
+  /* This drawer lives inside .topbar (z-index: 45), a sibling stacking
+     context to page content like .hero-row, which was later raised to
+     z-index: 70 (see its comment) so its own date-range/period dropdowns
+     paint above the KPI cards. Because the drawer and .hero-row are in
+     different stacking contexts, z-index only compares the two elements
+     that actually establish each context — so the drawer's old z-index: 60
+     lost to .hero-row's 70, letting a page's filter-tabs/category chips
+     visibly paint through the open notification panel. 95 keeps this above
+     every page-content stacking context (nothing in normal page flow goes
+     above .search-popover's 90) while staying below the modal backdrop
+     (500), toast (600) and PWA update banner (700), which should still
+     cover it when those are open. */
+  z-index: 95;
   display: flex;
   flex-direction: column;
   animation: drawerPop var(--duration-base) var(--ease-out);
@@ -3131,6 +3157,469 @@ p {
   background-color: var(--primary-500);
   color: var(--ink-on-dark);
   border-color: var(--primary-500);
+}
+
+/* =========================================================================
+   NEW SALE (COUNTER CHECKOUT) — product grid, cart, receipt
+   ========================================================================= */
+
+.pos-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-2);
+  max-height: 460px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.pos-product-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-card-solid);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.pos-product-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius-sm, 6px);
+  background: #f1ebe3;
+  margin-bottom: 2px;
+}
+
+.pos-product-tile:hover {
+  border-color: var(--primary-400);
+  transform: translateY(-1px);
+}
+
+.pos-product-tile:active {
+  transform: translateY(0);
+}
+
+.pos-product-name {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-900);
+  line-height: var(--leading-snug);
+}
+
+.pos-product-price {
+  font-size: var(--text-xs);
+  color: var(--primary-600);
+  font-weight: var(--weight-semibold);
+}
+
+.pos-cart-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-cart-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: var(--space-3);
+}
+
+.pos-cart-row {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.pos-cart-row-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.pos-cart-name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-900);
+}
+
+.pos-cart-line-total {
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+}
+
+.pos-cart-row-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pos-qty-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card-solid);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pos-qty-btn:hover {
+  border-color: var(--primary-400);
+}
+
+.pos-qty-value {
+  min-width: 20px;
+  text-align: center;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.pos-cart-unit-price {
+  font-size: 11px;
+  color: var(--ink-500);
+  margin-left: auto;
+}
+
+.pos-remove-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--accent-red-ink);
+  font-size: var(--text-xs);
+  padding: 2px 4px;
+}
+
+.pos-cart-summary {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.pos-cart-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--ink-900);
+}
+
+.pos-cart-subtotal-row {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  color: var(--ink-500);
+  margin-bottom: 2px;
+}
+
+/* ---- Open Bills strip (hold-bill) ---- */
+
+.pos-bills-strip {
+  margin-top: var(--space-3);
+}
+
+.pos-bills-list {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.pos-bill-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-card-solid);
+  cursor: pointer;
+  flex-shrink: 0;
+  min-width: 140px;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.pos-bill-chip:hover {
+  border-color: var(--primary-400);
+}
+
+.pos-bill-chip.is-active {
+  border-color: var(--primary-500);
+  background: var(--primary-50, var(--surface-card-solid));
+  box-shadow: 0 0 0 1px var(--primary-500) inset;
+}
+
+.pos-bill-chip-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pos-bill-chip-title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-900);
+}
+
+.pos-bill-chip-meta {
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+/* ---- Qty shortcut buttons ---- */
+
+.pos-qty-shortcut-btn {
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card-solid);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--ink-700);
+}
+
+.pos-qty-shortcut-btn:hover {
+  border-color: var(--primary-400);
+  color: var(--primary-600);
+}
+
+/* ---- Discount row ---- */
+
+.pos-discount-row {
+  margin-top: var(--space-2);
+}
+
+.pos-discount-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.pos-discount-input {
+  max-width: 140px;
+}
+
+/* ---- Receipt (printable bill) ---- */
+
+.receipt-format-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.receipt-paper {
+  background: #fff;
+  color: #111;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  font-family: 'Courier New', monospace;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+/* On-screen preview sizing — the matching @media print block further down
+   (search "body[data-receipt-format") only ever applied to the actual
+   printed page, so the preview modal always showed the same ~340px box
+   regardless of which format button (58mm/80mm/A5/A4) was selected: picking
+   a different size visibly did nothing until you actually printed. These
+   unscoped rules make the preview itself resize to roughly match what will
+   print — using a readable on-screen scale (a real 210mm A4 page would be
+   unusably wide inside the modal) rather than true mm, since this is only
+   ever a preview, not what's measured for the actual print/QZ Tray output.
+   The 58mm narrow-column/font-size tightening below mirrors the print
+   version so the preview also shows the same wrapping the printed receipt
+   will have. */
+body[data-receipt-format="58mm"] .receipt-paper { max-width: 230px; }
+body[data-receipt-format="80mm"] .receipt-paper { max-width: 310px; }
+body[data-receipt-format="A5"] .receipt-paper { max-width: 460px; padding: 24px; }
+body[data-receipt-format="A4"] .receipt-paper { max-width: 580px; padding: 32px; }
+
+body[data-receipt-format="58mm"] .receipt-items { font-size: 9.5px; }
+body[data-receipt-format="58mm"] .receipt-items td,
+body[data-receipt-format="58mm"] .receipt-items th { padding-right: 3px; }
+body[data-receipt-format="58mm"] .receipt-items th:nth-child(3),
+body[data-receipt-format="58mm"] .receipt-items td:nth-child(3) { width: 24%; }
+body[data-receipt-format="58mm"] .receipt-items th:first-child,
+body[data-receipt-format="58mm"] .receipt-items td:first-child { width: 40%; }
+
+.receipt-header {
+  text-align: center;
+}
+
+.receipt-cafe-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.receipt-meta {
+  font-size: 11px;
+  color: #333;
+}
+
+.receipt-divider {
+  border-top: 1px dashed #999;
+  margin: 8px 0;
+}
+
+.receipt-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  table-layout: fixed;
+}
+
+.receipt-items th {
+  text-align: left;
+  font-weight: 700;
+  border-bottom: 1px solid #999;
+  padding: 0 4px 3px 0;
+}
+
+.receipt-items td {
+  padding: 2px 4px 2px 0;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+/* Fixed column widths so the numeric columns never crowd into each other or
+   wrap mid-number on narrow thermal widths (58mm/80mm) — the item name
+   column gets the remaining space and wraps on its own instead; table-layout:
+   fixed needs an explicit width on every column (not "auto") to actually
+   honor this split. */
+.receipt-items th:first-child,
+.receipt-items td:first-child {
+  width: 46%;
+}
+.receipt-items th:not(:first-child),
+.receipt-items td:not(:first-child) {
+  width: 18%;
+  white-space: nowrap;
+}
+.receipt-items th:last-child,
+.receipt-items td:last-child {
+  padding-right: 0;
+}
+
+.receipt-subtotal-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #333;
+}
+
+.receipt-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.receipt-footer {
+  text-align: center;
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+/* Print sizing: the format toggle sets data-receipt-format on <body>; when the
+   owner hits Print, only #receiptPaper (and the page it sits in) should print —
+   everything else in the app (sidebar, header, other modal chrome) is hidden via
+   .no-print. 58mm/80mm use a continuous-roll width; A5/A4 use their real ISO
+   paper sizes for a full-sheet printout.
+
+   The actual page HEIGHT is not set here in CSS at all. `size: auto` alone
+   falls back to the browser/driver's default page (Letter/A4) instead of an
+   actual continuous roll, stranding a tiny receipt on a near-blank full sheet
+   and — since that assumed page was taller than the real content — forcing
+   pagination (the same short receipt printing again on page 2). The
+   width-only two-value syntax (`size: <width> auto`) is the standards-correct
+   fix for a roll printer, but auto-height isn't reliably honored by every
+   print/PDF engine tested here. So instead, printReceiptNow_browser_() in
+   script.js measures the receipt's real rendered height right before each
+   print and injects a one-off <style> with an explicit `@page { size: <w>
+   <h>; }` — two fixed numbers, which IS reliably honored — sized to that
+   exact bill, then removes it again after printing. This stylesheet only
+   fixes the WIDTH and the on-page layout; it must not also assign #receiptPaper
+   to a named @page with its own `auto` height rule, or that named rule wins
+   the cascade over the injected one and height goes back to being wrong. */
+@media print {
+  /* `visibility: hidden` on every element keeps each one's box in normal
+     layout flow — only its paint is suppressed — so the full app (sidebar,
+     dashboard, every modal) still occupied its real on-screen height (easily
+     several thousand px) during print. The receipt itself was pulled out
+     with position:absolute and WAS fully legible on page 1, but the browser
+     still tiled that same page size across the rest of that invisible-but-
+     present height, repeating the one visible receipt on every tile — the
+     exact "same short receipt again on page 2(+)" bug. The fix is to
+     actually remove the rest of the document from layout (display: none),
+     not just hide its paint, so the document's real height during print is
+     just the receipt's own height and nothing tiles beyond it. */
+  body > :not(#appModalBackdrop) {
+    display: none !important;
+  }
+  #appModalBackdrop > :not(.modal-dialog) {
+    display: none !important;
+  }
+  .modal-dialog > :not(#modalBody) {
+    display: none !important;
+  }
+  #modalBody > :not(#receiptPaper) {
+    display: none !important;
+  }
+  html, body, #appModalBackdrop, .modal-dialog, #modalBody {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    position: static !important;
+  }
+  #receiptPaper {
+    position: static;
+    max-width: none;
+    border: none;
+    box-shadow: none;
+    margin: 0 auto;
+  }
+  .no-print {
+    display: none !important;
+  }
+
+  body[data-receipt-format="58mm"] #receiptPaper { width: 58mm; padding: 2mm 3mm; }
+  body[data-receipt-format="80mm"] #receiptPaper { width: 80mm; padding: 3mm 4mm; }
+  body[data-receipt-format="A5"] #receiptPaper { width: 148mm; padding: 10mm; }
+  body[data-receipt-format="A4"] #receiptPaper { width: 210mm; padding: 15mm; }
+
+  /* 58mm is tight enough that the default 11px item-table text crowds the
+     Qty/Rate/Amt columns even with fixed widths — drop a size only there and
+     widen the Rate column so a 3-digit rate (e.g. 165.00) never touches the
+     Amt column that follows it. Keep these in sync with the matching values
+     printReceiptNow_browser_() uses for its off-screen height measurement
+     clone (font-size 9.5px for 58mm) so the measured height matches reality. */
+  body[data-receipt-format="58mm"] .receipt-items { font-size: 9.5px; }
+  body[data-receipt-format="58mm"] .receipt-items td,
+  body[data-receipt-format="58mm"] .receipt-items th { padding-right: 3px; }
+  body[data-receipt-format="58mm"] .receipt-items th:nth-child(3),
+  body[data-receipt-format="58mm"] .receipt-items td:nth-child(3) { width: 24%; }
+  body[data-receipt-format="58mm"] .receipt-items th:first-child,
+  body[data-receipt-format="58mm"] .receipt-items td:first-child { width: 40%; }
 }
 
 .text-center {
