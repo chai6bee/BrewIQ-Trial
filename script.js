@@ -584,11 +584,33 @@ document.addEventListener('DOMContentLoaded', () => {
         sellingPrice: p.price,
         marginRs: Math.round((p.price - landedCost) * 100) / 100,
         marginPct: landedCost > 0 ? Math.round(((p.price - landedCost) / landedCost) * 10000) / 100 : 0,
-        dailyOrders: 0
+        dailyOrders: 0,
+        // No per-product photo field existed at all before this — every menu
+        // item rendered as plain text everywhere (New Sale tiles, Menu
+        // Costing). imageDataUrl is set when the owner uploads a real photo
+        // (via Menu Costing or the Add Menu Item form) and takes priority;
+        // otherwise getProductImageSrc_() below falls back to a real photo
+        // already shipped in images/menu/<id>.jpg for the ~26 items that
+        // have one yet, then finally to a generic placeholder graphic — so
+        // every product always has SOME image slot, never a missing-image
+        // broken icon or empty box.
+        imageDataUrl: null
       };
     }),
     selectedProductId: 'P064',
     productCategoryFilter: 'All',
+    // Counter checkout (New Sale) screen state — the owner can hold several bills
+    // open at once (one per customer/table, "hold" lets staff start a second order
+    // while the first is still being decided) and switch between them; the active
+    // bill's items are what the cart panel shows and what Checkout settles.
+    // heldBills/activeBillId persist to localStorage (see persistHeldBills/
+    // loadHeldBills below) so an accidental refresh mid-rush doesn't lose an order.
+    heldBills: [], // [{ id, label, number, items: [{productId,name,qty,unitPrice}], paymentMode, discountType, discountValue }]
+    activeBillId: null,
+    nextBillNumber: 1,
+    posCategoryFilter: 'All',
+    posReceiptFormat: '80mm', // '58mm' | '80mm' | 'A5' | 'A4'
+    lastReceipt: null, // populated right after checkout, for the print view
     // Real 22-day October sales totals, extracted from the café's own workbook.
     // New EOD entries (see the Sales page) merge into this same array by date.
     dailySummary: SEED_DAILY_SUMMARY.map((d) => ({ ...d })),
@@ -673,12 +695,257 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // --- Dashboard behavior ---
       dashboardDefaultPeriod: 'Monthly',
-      lowStockBadgeOnSidebar: true
+      lowStockBadgeOnSidebar: true,
+
+      // --- Printing ---
+      // printMode 'browser' (default): Print Bill calls window.print(), which
+      // always shows the OS print dialog — standard browser behavior, works
+      // everywhere, no setup. printMode 'qztray': Print Bill instead sends
+      // raw ESC/POS straight to a named printer via a local QZ Tray agent
+      // running on the till's own PC — no dialog, one click, one copy,
+      // matches how a dedicated POS terminal behaves. QZ Tray
+      // (qz.io, free) must be installed and running on that PC for this to
+      // work; it is a separate one-time install, not something this web app
+      // can install for the owner.
+      printMode: 'browser',
+      defaultReceiptFormat: '80mm',
+      qzTrayPrinterName: '',
+      qzTrayHost: 'localhost',
+      // 'thermal': sends raw ESC/POS control codes (buildEscPosReceipt_) —
+      // only a real thermal/receipt printer's firmware understands these
+      // binary commands. 'regular': sends the receipt as rendered HTML
+      // instead (QZ Tray's "pixel printing"), which works with an ordinary
+      // inkjet/laser printer's normal driver, the same way printing any
+      // other webpage does. Sending raw ESC/POS to a regular printer like a
+      // Canon/HP/Epson inkjet doesn't error — the driver just can't make
+      // sense of the bytes, so the job silently produces nothing even though
+      // qz.print() itself resolves successfully and the app reports success.
+      qzTrayPrinterType: 'thermal'
     },
     telegramConnected: false,
     syncStatus: 'local',
     lastSyncedAt: null
   };
+
+  // ---- Held Bills (counter checkout) persistence ----
+  // Held bills are per-browser working state for the counter, not business data —
+  // they're gone once a bill is checked out (it becomes a real DAILY_SALES record
+  // instead) — so localStorage is the right place for them, not the backend sheet.
+  // Wrapped in try/catch per the platform rule: storage can throw or come back
+  // empty in a private window or with blocked site data, and the counter must
+  // still work (starting from one empty bill) even then.
+  const HELD_BILLS_STORAGE_KEY = 'brewiq_held_bills_v1';
+
+  const persistHeldBills = () => {
+    try {
+      localStorage.setItem(
+        HELD_BILLS_STORAGE_KEY,
+        JSON.stringify({ heldBills: state.heldBills, activeBillId: state.activeBillId, nextBillNumber: state.nextBillNumber })
+      );
+    } catch (e) {
+      /* best-effort only — a held bill lost to a storage failure still works for this session */
+    }
+  };
+
+  const loadHeldBills = () => {
+    try {
+      const raw = localStorage.getItem(HELD_BILLS_STORAGE_KEY);
+      if (!raw) return false;
+      const saved = JSON.parse(raw);
+      if (saved && Array.isArray(saved.heldBills) && saved.heldBills.length) {
+        state.heldBills = saved.heldBills;
+        state.activeBillId = saved.activeBillId || saved.heldBills[0].id;
+        state.nextBillNumber = saved.nextBillNumber || saved.heldBills.length + 1;
+        return true;
+      }
+    } catch (e) {
+      /* corrupted or inaccessible storage — fall through to a fresh bill */
+    }
+    return false;
+  };
+
+  const createNewBill = (label) => {
+    const bill = {
+      id: 'BILL-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000),
+      number: state.nextBillNumber,
+      label: (label || '').trim(),
+      items: [],
+      paymentMode: 'Cash',
+      discountType: 'none', // 'none' | 'flat' | 'pct'
+      discountValue: 0
+    };
+    state.nextBillNumber += 1;
+    state.heldBills.push(bill);
+    state.activeBillId = bill.id;
+    persistHeldBills();
+    return bill;
+  };
+
+  const getActiveBill = () => {
+    if (!state.heldBills.length) {
+      createNewBill();
+    }
+    let bill = state.heldBills.find((b) => b.id === state.activeBillId);
+    if (!bill) {
+      bill = state.heldBills[0];
+      state.activeBillId = bill.id;
+    }
+    return bill;
+  };
+
+  // Ensure at least one bill exists on load, restoring held bills from a prior
+  // session (e.g. the page was refreshed mid-rush) when there are any.
+  if (!loadHeldBills()) {
+    createNewBill();
+  }
+
+  // ---- Local business-data persistence (sales, dailySummary, expenses, etc.) ----
+  // Before this, every checkout/EOD-entry/expense/etc. only ever lived in the
+  // in-memory `state` object for that page session. When a Google Sheet
+  // connection is configured, that's fine — the backend is the durable store
+  // and a sync pulls it back after refresh. But run locally with no
+  // apiBaseUrl set (apiCall/syncFromSheet both no-op in that case), there was
+  // no durable store at all: a refresh always re-ran the DOMContentLoaded
+  // handler from scratch, which rebuilds state.sales/dailySummary/etc. from
+  // the hardcoded SEED_* arrays — silently discarding every real sale,
+  // expense, EOD entry, stock deduction, staff/contact add, and BOM edit made
+  // during that session. This is what made a checked-out bill "vanish" on
+  // refresh even with no backend configured at all.
+  //
+  // This saves/restores exactly the fields a real café's day-to-day work
+  // touches — not UI/transient fields (activePage, filters, lastReceipt,
+  // syncStatus) and not heldBills/settings, which already have their own
+  // dedicated persistence above. It is intentionally separate from (and
+  // overridden by) a live Sheet sync: mergeBootstrapIntoState always wins
+  // once a real connection exists, so this only matters for local/offline use.
+  const LOCAL_DATA_STORAGE_KEY = 'brewiq_local_data_v1';
+  const LOCAL_DATA_FIELDS = [
+    'sales', 'expenses', 'productSalesLog', 'dailySummary', 'staff', 'contacts',
+    'attendance', 'payrollLogs', 'recipeBom', 'products', 'inventory',
+    'totalRevenue', 'netProfit', 'totalExpenses', 'totalOrders', 'todayRevenue', 'todayOrders',
+    'nextBillNumber'
+  ];
+
+  // Set to true the first time a save actually fails, so the UI can warn the
+  // owner instead of silently losing data with no visible sign anything is
+  // wrong (a private/incognito window, a storage quota hit, or the browser
+  // blocking site data are the only realistic ways this save can fail).
+  let localSaveFailed = false;
+  const persistLocalBusinessData = () => {
+    // THIS USED TO SKIP SAVING WHENEVER settings.apiBaseUrl WAS A NON-EMPTY
+    // STRING, on the reasoning "a configured Sheet is the source of truth."
+    // That reasoning only holds if the Sheet is actually REACHABLE right
+    // now — a URL being typed into Settings once (even a dead/old/mistyped
+    // deployment link the owner later gave up on) proves nothing about
+    // that. apiCall() above already treats a failed/unreachable request as
+    // non-fatal and tells the owner "Saved locally" when it can't reach the
+    // server — but with the old guard here, that message was a LIE: the
+    // in-memory state had changed, but nothing was actually written to
+    // localStorage, so a refresh silently lost the entry anyway. This is
+    // what was happening with EOD entries no longer surviving refresh even
+    // though New Sale checkout appeared to work in isolated testing — any
+    // leftover apiBaseUrl in Settings (including one from an earlier,
+    // abandoned connection attempt) silently disabled ALL local saving from
+    // that point on, with no warning anywhere in the UI.
+    //
+    // The fix: always save locally as a cheap, harmless safety net,
+    // regardless of apiBaseUrl. This never conflicts with a genuinely
+    // connected Sheet — mergeBootstrapIntoState (run by syncFromSheet on
+    // load and on every periodic/manual sync) always overwrites this local
+    // copy with the server's real data once that Sheet is actually
+    // reachable, so a working connection is never shadowed by this. It only
+    // helps the one case that broke before: the Sheet URL is configured but
+    // NOT currently reachable, where this is now the only thing standing
+    // between a sale and data loss.
+    try {
+      const snapshot = {};
+      LOCAL_DATA_FIELDS.forEach((key) => { snapshot[key] = state[key]; });
+      const payload = JSON.stringify(snapshot);
+      localStorage.setItem(LOCAL_DATA_STORAGE_KEY, payload);
+      // Read-back verification: setItem() can appear to succeed yet not
+      // actually persist in some private/incognito modes (notably older
+      // Safari), which silently cap storage at 0 bytes instead of throwing.
+      // Comparing what was just written against what's actually in storage
+      // catches that case, which a bare try/catch around setItem cannot.
+      const verify = localStorage.getItem(LOCAL_DATA_STORAGE_KEY);
+      if (verify !== payload) throw new Error('read-back mismatch after save');
+      if (localSaveFailed) {
+        localSaveFailed = false;
+        showToast('Local saving is working again — your sales are being saved on this device.', 'success');
+      }
+    } catch (e) {
+      // Best-effort in general, but a failure here means real sales data is
+      // about to be lost on refresh — that must never fail silently again.
+      if (!localSaveFailed) {
+        localSaveFailed = true;
+        showToast('⚠ Could not save sales data on this device (private/incognito window, or storage is full/blocked). Sales made now may be lost on refresh — switch to a normal browser window, or connect a Google Sheet in Settings so sales save to the cloud instead.', 'warning');
+      }
+    }
+  };
+
+  const loadLocalBusinessData = () => {
+    try {
+      const raw = localStorage.getItem(LOCAL_DATA_STORAGE_KEY);
+      if (!raw) return false;
+      const saved = JSON.parse(raw);
+      if (!saved || typeof saved !== 'object') return false;
+      LOCAL_DATA_FIELDS.forEach((key) => {
+        if (saved[key] !== undefined) state[key] = saved[key];
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Restore any locally-saved business data over the hardcoded seed before
+  // the first render, unconditionally — even when a Sheet URL is configured.
+  // This used to be skipped whenever apiBaseUrl was set, on the assumption
+  // that syncFromSheet (below) would supply the real data instead. But if
+  // that URL is stale, mistyped, or the deployment is down, syncFromSheet
+  // fails quietly and the app was falling all the way back to the
+  // hardcoded SEED_* demo data — silently discarding whatever had been
+  // saved locally, which looked exactly like "my sales disappeared" even
+  // though they were sitting safely in this browser's storage the whole
+  // time. Loading the local snapshot first and unconditionally costs
+  // nothing: a genuinely working Sheet connection still overwrites this
+  // with the server's real data moments later via mergeBootstrapIntoState.
+  loadLocalBusinessData();
+
+  // Startup storage probe: confirms localStorage actually works on THIS
+  // browser/profile before any sale is made, rather than only discovering a
+  // problem after a checkout and a refresh have already lost real data. Some
+  // private-browsing modes let setItem()/getItem() both "succeed" against an
+  // in-memory-only store that's wiped the instant the tab closes — a bare
+  // try/catch never sees that as an error, so this probe writes a known
+  // value, re-reads it in a fresh call, and checks it round-tripped.
+  // Declared here (near the local-data logic it protects) but NOT called
+  // until after showToast() exists further below — see the call site next
+  // to showToast's definition.
+  const probeLocalStorageAvailability_ = () => {
+    if ((state.settings.apiBaseUrl || '').trim()) return; // Sheet is the source of truth; this probe doesn't matter
+    try {
+      const probeKey = '__brewiq_storage_probe__';
+      const probeVal = String(Date.now());
+      localStorage.setItem(probeKey, probeVal);
+      const readBack = localStorage.getItem(probeKey);
+      localStorage.removeItem(probeKey);
+      if (readBack !== probeVal) {
+        showToast('⚠ This browser is not saving data between page loads (common in private/incognito mode). Sales recorded here WILL be lost on refresh — use a normal browser window, or connect a Google Sheet in Settings → Cloud Sync.', 'warning');
+      }
+    } catch (e) {
+      showToast('⚠ This browser is blocking local storage, so sales cannot be saved on this device. Use a normal (non-private) browser window, or connect a Google Sheet in Settings → Cloud Sync so sales save to the cloud instead.', 'warning');
+    }
+  };
+
+  // Safety-net autosave: persistLocalBusinessData() is also called directly
+  // after every action that mutates sales/expenses/etc. (checkout, EOD entry,
+  // add expense, restock, add staff/contact, BOM edit, ...), but a periodic
+  // save plus a save on refresh/tab-close means even a mutation site that
+  // didn't explicitly call it is still captured within a few seconds, or at
+  // the moment the page is actually torn down.
+  setInterval(persistLocalBusinessData, 4000);
+  window.addEventListener('beforeunload', persistLocalBusinessData);
 
   const pageDirectory = [
     { id: 'dashboard', title: 'Dashboard', desc: 'Main overview, KPIs, Revenue vs Expenses chart, Top Selling Items' },
@@ -717,6 +984,80 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const formatINR = (num) => `₹ ${Number(num).toLocaleString('en-IN')}`;
+
+  // ---- Menu item photos ----------------------------------------------------
+  // Product ids that shipped with a real, already-generated photo at
+  // images/menu/<id>.jpg (26 of the 90-item catalog so far, from an earlier
+  // photo-generation pass). Every other product falls back to a plain
+  // placeholder graphic — never a broken image icon — until the owner adds
+  // the real one. The owner can drop more images directly into images/menu/
+  // named exactly <productId>.jpg (e.g. P041.jpg) and add that id to this
+  // set to pick them up with zero other changes; images uploaded in-app
+  // (Menu Costing's "Change Photo", or the Add Menu Item form) don't need
+  // this at all — they're stored as a data URL on the product itself
+  // (imageDataUrl) and always take priority over this shipped set.
+  const PRODUCTS_WITH_SHIPPED_PHOTO = new Set([
+    'P001', 'P002', 'P003', 'P004', 'P005', 'P006', 'P007', 'P008', 'P009', 'P010',
+    'P011', 'P012', 'P013', 'P014', 'P015', 'P016', 'P017', 'P018', 'P019', 'P020',
+    'P021', 'P022', 'P023', 'P024', 'P025', 'P026'
+  ]);
+
+  // A neutral plate/cup line-art placeholder, inlined as an SVG data URI so
+  // it never 404s and needs no extra file — shown for any product that has
+  // neither an in-app uploaded photo nor a shipped images/menu/<id>.jpg yet.
+  const PRODUCT_IMAGE_PLACEHOLDER =
+    'data:image/svg+xml;utf8,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+        <rect width="200" height="200" rx="16" fill="#f1ebe3"/>
+        <circle cx="100" cy="92" r="46" fill="none" stroke="#c9a876" stroke-width="5"/>
+        <circle cx="100" cy="92" r="30" fill="none" stroke="#c9a876" stroke-width="3"/>
+        <path d="M60 150c0-14 18-24 40-24s40 10 40 24" fill="none" stroke="#c9a876" stroke-width="5" stroke-linecap="round"/>
+        <text x="100" y="178" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#9c8569">No photo yet</text>
+      </svg>`
+    );
+
+  // Single source of truth for "what image should this product show right
+  // now" — used by New Sale tiles, Menu Costing, and the Add Menu Item
+  // preview, so all three always agree and a future change only needs to
+  // happen here once.
+  const getProductImageSrc_ = (product) => {
+    if (product && product.imageDataUrl) return product.imageDataUrl;
+    if (product && PRODUCTS_WITH_SHIPPED_PHOTO.has(product.id)) return `images/menu/${product.id}.jpg`;
+    return PRODUCT_IMAGE_PLACEHOLDER;
+  };
+
+  // Reads a File (from an <input type="file">) into a compressed, size-capped
+  // data URL for storage directly on the product object. A raw phone-camera
+  // photo can be several MB — dozens of those saved uncompressed would blow
+  // through localStorage's per-origin quota (typically 5-10MB) fast, silently
+  // breaking the sales-persistence save alongside it. Downscaling to a
+  // sensible product-photo size (max 480px) and re-encoding as JPEG keeps
+  // each photo to a few dozen KB, so the whole catalog's photos together stay
+  // well within quota even with every item eventually getting a real one.
+  const readImageFileAsDataUrl_ = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error);
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Could not decode image'));
+        img.onload = () => {
+          const MAX_DIM = 480;
+          const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
 
   /**
    * Computes each staff member's real this-month attendance figures from
@@ -1685,6 +2026,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }, duration);
   };
 
+  // Now that showToast exists, run the startup storage probe declared above
+  // — this is the earliest safe point to warn the owner that local saving
+  // won't work on this browser, before any real sale has a chance to be lost.
+  probeLocalStorageAvailability_();
+
   const triggerDataRefresh = (callback) => {
     if (!mainContent) {
       callback();
@@ -1925,10 +2271,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dialogEl) dialogEl.classList.remove('modal-dialog--wide');
   };
 
+  // Draft recipe lines for the "Add Menu Item" modal, held in memory only
+  // while that modal is open (reset to [] every time it's opened — see
+  // openModal below). Each entry: { ingId, ingName, unitCost, usageQtyPerUnit }.
+  // A brand-new product needs its whole BOM built in one sitting before it
+  // exists at all, unlike editing an existing product's BOM row-by-row on
+  // the Menu Costing page — so this little draft list (not real state) is
+  // what the "Add Ingredient Line" button inside that modal adds to, and
+  // what "Create Menu Item" finally turns into real state.recipeBom rows.
+  let addMenuItemDraftBom_ = [];
+
   const openModal = (type, contextIdx) => {
     if (!appModalBackdrop || !modalTitle || !modalBody) return;
     const dialogEl = document.querySelector('.modal-dialog');
-    if (dialogEl) dialogEl.classList.toggle('modal-dialog--wide', type === 'eod-entry');
+    if (dialogEl) dialogEl.classList.toggle('modal-dialog--wide', type === 'eod-entry' || type === 'add-menu-item');
+    if (type === 'add-menu-item') addMenuItemDraftBom_ = []; // fresh draft every time the modal is (re)opened
 
     if (type === 'restock-item') {
       const idx = Number(contextIdx);
@@ -2227,11 +2584,739 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </form>
       `;
+    } else if (type === 'add-menu-item') {
+      modalTitle.textContent = 'Add Menu Item';
+      const existingCategories = Array.from(new Set(state.products.map((p) => p.category)));
+      const bomTotal = addMenuItemDraftBom_.reduce((s, r) => s + r.usageQtyPerUnit * r.unitCost, 0);
+      modalBody.innerHTML = `
+        <form id="addMenuItemForm" class="form-grid">
+          <div class="form-field">
+            <label class="form-label" for="newItemNameInput">Item Name</label>
+            <input class="form-input" id="newItemNameInput" name="name" required placeholder="e.g., Mango Shake" autofocus />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemCategorySelect">Category</label>
+            <select class="form-input" id="newItemCategorySelect" name="category">
+              ${existingCategories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+              <option value="__new__">+ New category…</option>
+            </select>
+          </div>
+          <div class="form-field form-field--full" id="newItemCategoryCustomWrap" hidden>
+            <label class="form-label" for="newItemCategoryCustomInput">New Category Name</label>
+            <input class="form-input" id="newItemCategoryCustomInput" placeholder="e.g., DESSERT" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemPriceInput">Selling Price (₹)</label>
+            <input class="form-input tabular-nums" id="newItemPriceInput" name="price" type="number" min="1" step="0.5" required placeholder="e.g., 60" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemPhotoInput">Photo (optional)</label>
+            <input class="form-input" id="newItemPhotoInput" type="file" accept="image/*" />
+          </div>
+
+          <div class="form-field form-field--full" style="margin-top:4px;padding-top:12px;border-top:1px solid var(--border-subtle);">
+            <h3 class="card-title" style="font-size:var(--text-sm);margin-bottom:6px;">Recipe (BOM) — ingredients used per unit sold</h3>
+            <p class="item-cat" style="font-size:11px;margin-bottom:10px;">Optional, but needed for this item's cost/margin to be calculated and for a sale to deduct the right stock. You can skip this and add it later from Menu Costing instead.</p>
+            <div id="newItemBomRowsList">${renderAddMenuItemBomRowsHtml_()}</div>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="newItemBomIngSelect">Ingredient</label>
+            <select class="form-input" id="newItemBomIngSelect">
+              <option value="">— choose —</option>
+              ${state.inventory
+                .filter((i) => !addMenuItemDraftBom_.some((r) => r.ingId === i.sku))
+                .map((i) => `<option value="${esc(i.sku)}" data-name="${esc(i.item)}" data-unit-cost="${i.unitCost}">${esc(i.item)} (₹${i.unitCost.toFixed(2)}/base unit)</option>`)
+                .join('')}
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemBomUsageInput">Qty used per unit sold</label>
+            <input class="form-input tabular-nums" id="newItemBomUsageInput" type="number" min="0.01" step="0.01" placeholder="e.g. 100 (ml/g/pcs)" />
+          </div>
+          <div class="form-field form-field--full">
+            <button type="button" class="table-action-btn" id="newItemAddBomRowBtn" style="width:100%;justify-content:center;">+ Add Ingredient Line</button>
+          </div>
+
+          <div class="form-field form-field--full" style="margin-top:4px;padding-top:12px;border-top:1px solid var(--border-subtle);">
+            <h3 class="card-title" style="font-size:var(--text-sm);margin-bottom:6px;">Other Per-Unit Costs (₹, optional)</h3>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemGasInput">Gas Cost</label>
+            <input class="form-input tabular-nums" id="newItemGasInput" name="gasCost" type="number" min="0" step="0.01" value="0" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemOilInput">Oil Cost</label>
+            <input class="form-input tabular-nums" id="newItemOilInput" name="oilCost" type="number" min="0" step="0.01" value="0" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemWastageInput">Wastage Cost</label>
+            <input class="form-input tabular-nums" id="newItemWastageInput" name="wastageCost" type="number" min="0" step="0.01" value="0" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="newItemOverheadsInput">Other Overheads</label>
+            <input class="form-input tabular-nums" id="newItemOverheadsInput" name="overheadsCost" type="number" min="0" step="0.01" value="0" />
+          </div>
+
+          <div class="form-field form-field--full" style="margin-top:4px;padding-top:12px;border-top:1px solid var(--border-subtle);">
+            <div class="summary-item">
+              <span class="sum-label">Raw Cost (from recipe above)</span>
+              <strong class="sum-val tabular-nums" id="newItemRawCostPreview">₹ ${bomTotal.toFixed(2)}</strong>
+            </div>
+            <div class="summary-item">
+              <span class="sum-label">Landed Cost (Raw + Gas + Oil + Wastage + Overheads)</span>
+              <strong class="sum-val tabular-nums" id="newItemLandedCostPreview">₹ ${bomTotal.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          <div class="form-field form-field--full">
+            <button type="submit" class="primary-cta-pill" style="width:100%;justify-content:center;">Create Menu Item</button>
+          </div>
+        </form>
+      `;
     }
 
     appModalBackdrop.removeAttribute('hidden');
     const firstInput = modalBody.querySelector('input, select, button');
     if (firstInput) firstInput.focus();
+
+    if (type === 'add-menu-item') wireAddMenuItemModal_();
+  };
+
+  // Renders just the list of ingredient lines already added to the new
+  // item's draft recipe, with a remove button per line — called both on
+  // first modal open (empty) and after every add/remove, without touching
+  // the rest of the form so whatever the owner already typed isn't lost.
+  const renderAddMenuItemBomRowsHtml_ = () => {
+    if (addMenuItemDraftBom_.length === 0) {
+      return `<p class="table-empty-note" style="margin:0 0 8px;">No ingredients added yet.</p>`;
+    }
+    return `
+      <table class="items-table" style="margin-bottom:8px;">
+        <tbody>
+          ${addMenuItemDraftBom_
+            .map(
+              (r, idx) => `
+            <tr>
+              <td><strong>${esc(r.ingName)}</strong></td>
+              <td class="text-right tabular-nums">${r.usageQtyPerUnit} × ₹${r.unitCost.toFixed(2)}</td>
+              <td class="text-right tabular-nums">₹ ${(r.usageQtyPerUnit * r.unitCost).toFixed(2)}</td>
+              <td class="text-right"><button type="button" class="table-action-btn" data-remove-draft-bom-idx="${idx}">✕</button></td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    `;
+  };
+
+  // Recomputes the Raw Cost / Landed Cost preview figures shown in the
+  // modal from the current draft BOM lines plus whatever the owner has
+  // typed into the gas/oil/wastage/overheads fields right now — called on
+  // every add/remove ingredient line and on every keystroke in those four
+  // cost fields, so the preview never lags behind what's actually on screen.
+  const recalcAddMenuItemCostPreview_ = () => {
+    const rawCostEl = document.getElementById('newItemRawCostPreview');
+    const landedCostEl = document.getElementById('newItemLandedCostPreview');
+    if (!rawCostEl || !landedCostEl) return;
+    const rawCost = addMenuItemDraftBom_.reduce((s, r) => s + r.usageQtyPerUnit * r.unitCost, 0);
+    const gas = Number(document.getElementById('newItemGasInput')?.value) || 0;
+    const oil = Number(document.getElementById('newItemOilInput')?.value) || 0;
+    const wastage = Number(document.getElementById('newItemWastageInput')?.value) || 0;
+    const overheads = Number(document.getElementById('newItemOverheadsInput')?.value) || 0;
+    rawCostEl.textContent = `₹ ${rawCost.toFixed(2)}`;
+    landedCostEl.textContent = `₹ ${(rawCost + gas + oil + wastage + overheads).toFixed(2)}`;
+  };
+
+  // Wires up everything inside the "Add Menu Item" modal that a plain
+  // form-submit listener can't handle on its own: the category
+  // new-vs-existing toggle, the "+ Add Ingredient Line" button (which adds
+  // to the in-memory draft and re-renders just that list, not the whole
+  // modal — re-rendering the whole modal would lose focus/cursor position
+  // in whatever field the owner was just typing in), per-line remove
+  // buttons, and the live cost preview.
+  const wireAddMenuItemModal_ = () => {
+    const categorySelect = document.getElementById('newItemCategorySelect');
+    const customWrap = document.getElementById('newItemCategoryCustomWrap');
+    if (categorySelect && customWrap) {
+      categorySelect.addEventListener('change', () => {
+        customWrap.hidden = categorySelect.value !== '__new__';
+      });
+    }
+
+    const rowsListEl = document.getElementById('newItemBomRowsList');
+    const rerenderRows = () => {
+      if (rowsListEl) rowsListEl.innerHTML = renderAddMenuItemBomRowsHtml_();
+      // Re-wire remove buttons every time the list's HTML is replaced.
+      if (rowsListEl) {
+        rowsListEl.querySelectorAll('[data-remove-draft-bom-idx]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const idx = Number(btn.getAttribute('data-remove-draft-bom-idx'));
+            addMenuItemDraftBom_.splice(idx, 1);
+            rerenderRows();
+            recalcAddMenuItemCostPreview_();
+            // The ingredient just removed should reappear in the picker.
+            refreshIngredientPicker_();
+          });
+        });
+      }
+    };
+    rerenderRows();
+
+    const ingSelect = document.getElementById('newItemBomIngSelect');
+    const refreshIngredientPicker_ = () => {
+      if (!ingSelect) return;
+      const current = ingSelect.value;
+      ingSelect.innerHTML =
+        `<option value="">— choose —</option>` +
+        state.inventory
+          .filter((i) => !addMenuItemDraftBom_.some((r) => r.ingId === i.sku))
+          .map((i) => `<option value="${esc(i.sku)}" data-name="${esc(i.item)}" data-unit-cost="${i.unitCost}">${esc(i.item)} (₹${i.unitCost.toFixed(2)}/base unit)</option>`)
+          .join('');
+      ingSelect.value = current && Array.from(ingSelect.options).some((o) => o.value === current) ? current : '';
+    };
+
+    const addRowBtn = document.getElementById('newItemAddBomRowBtn');
+    if (addRowBtn) {
+      addRowBtn.addEventListener('click', () => {
+        const usageInput = document.getElementById('newItemBomUsageInput');
+        if (!ingSelect || !ingSelect.value) {
+          showToast('Pick an ingredient first');
+          return;
+        }
+        const usage = Number(usageInput?.value);
+        if (!usage || usage <= 0) {
+          showToast('Enter how much of it one unit sold uses');
+          return;
+        }
+        const opt = ingSelect.options[ingSelect.selectedIndex];
+        addMenuItemDraftBom_.push({
+          ingId: ingSelect.value,
+          ingName: opt.getAttribute('data-name'),
+          unitCost: Number(opt.getAttribute('data-unit-cost')) || 0,
+          usageQtyPerUnit: usage
+        });
+        if (usageInput) usageInput.value = '';
+        rerenderRows();
+        recalcAddMenuItemCostPreview_();
+        refreshIngredientPicker_();
+      });
+    }
+
+    ['newItemGasInput', 'newItemOilInput', 'newItemWastageInput', 'newItemOverheadsInput'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', recalcAddMenuItemCostPreview_);
+    });
+  };
+
+  // QZ Tray integration (Settings > Printing > Print Mode = "QZ Tray"): sends
+  // the receipt as raw ESC/POS straight to a named printer via the free QZ
+  // Tray desktop app (qz.io) running locally on the till's own PC, over a
+  // WebSocket the qz-tray.js SDK opens to localhost — no OS print dialog, one
+  // click, exactly one copy, and an explicit cut command at the end so the
+  // next bill doesn't visually run into this one on a real thermal printer.
+  // This is strictly opt-in: window.print() (printReceiptNow_ above) remains
+  // the default and only path for anyone who hasn't installed/configured QZ
+  // Tray, so nothing changes for them.
+  let qzConnectPromise_ = null;
+  const qzEnsureConnected_ = () => {
+    if (typeof qz === 'undefined') {
+      return Promise.reject(new Error('QZ Tray script did not load (no internet access to the CDN, or it is blocked).'));
+    }
+    if (qz.websocket.isActive()) return Promise.resolve();
+    if (qzConnectPromise_) return qzConnectPromise_;
+
+    // QZ Tray normally requires a signed/certificate-verified connection for
+    // unattended production use; for a single café's own till this app runs
+    // unsigned, which QZ Tray allows via a one-time "always trust" prompt the
+    // owner clicks through on that PC the first time it connects — the
+    // simplest setup that still only works because the owner's own machine
+    // explicitly allowed it, not something this web app can silently bypass.
+    if (qz.security && qz.security.setCertificatePromise) {
+      qz.security.setCertificatePromise((resolve) => resolve());
+    }
+    if (qz.security && qz.security.setSignaturePromise) {
+      qz.security.setSignaturePromise(() => (resolve) => resolve());
+    }
+
+    const host = (state.settings.qzTrayHost || 'localhost').trim() || 'localhost';
+    qzConnectPromise_ = qz.websocket
+      .connect({ host, usingSecure: false })
+      .catch((err) => {
+        qzConnectPromise_ = null;
+        throw err;
+      });
+    return qzConnectPromise_;
+  };
+
+  // Builds the same receipt content already shown in the print preview, as
+  // ESC/POS commands — plain text lines plus the standard initialize/
+  // align/bold/cut escape sequences nearly every thermal printer (58mm/80mm)
+  // understands, so this works whether QZ Tray's target is a USB, network,
+  // or Windows-shared printer.
+  const buildEscPosReceipt_ = (receipt) => {
+    const ESC = '\x1B';
+    const GS = '\x1D';
+    const INIT = ESC + '@';
+    const ALIGN_CENTER = ESC + 'a' + '\x01';
+    const ALIGN_LEFT = ESC + 'a' + '\x00';
+    const BOLD_ON = ESC + 'E' + '\x01';
+    const BOLD_OFF = ESC + 'E' + '\x00';
+    const CUT = GS + 'V' + '\x41' + '\x00';
+    const pad = (left, right, width) => {
+      const gap = Math.max(1, width - left.length - right.length);
+      return left + ' '.repeat(gap) + right;
+    };
+    const LINE_WIDTH = (state.posReceiptFormat === '58mm') ? 32 : 42; // chars per line, standard for 58mm/80mm thermal fonts
+    const divider = '-'.repeat(LINE_WIDTH);
+
+    let out = INIT;
+    out += ALIGN_CENTER + BOLD_ON + (state.settings.cafeName || "Chai' Bee'") + '\n' + BOLD_OFF;
+    out += (state.settings.address ? state.settings.address.split(',')[0] : 'Main Branch') + '\n';
+    out += `${receipt.date} - ${receipt.time}\n`;
+    out += `Bill No: ${receipt.orderId}\n`;
+    out += ALIGN_LEFT + divider + '\n';
+    receipt.items.forEach((it) => {
+      out += `${it.name}\n`;
+      out += pad(`  ${it.qty} x ${it.unitPrice.toFixed(2)}`, it.lineTotal.toFixed(2), LINE_WIDTH) + '\n';
+    });
+    out += divider + '\n';
+    if (receipt.discountAmount > 0) {
+      out += pad('Subtotal', `Rs ${receipt.subtotal.toFixed(2)}`, LINE_WIDTH) + '\n';
+      out += pad('Discount', `-Rs ${receipt.discountAmount.toFixed(2)}`, LINE_WIDTH) + '\n';
+    }
+    out += BOLD_ON + pad('TOTAL', `Rs ${receipt.total.toFixed(2)}`, LINE_WIDTH) + '\n' + BOLD_OFF;
+    out += `Paid via ${receipt.paymentMode}\n`;
+    out += divider + '\n';
+    out += ALIGN_CENTER + 'Thank you, visit again!\n\n\n';
+    out += CUT;
+    return out;
+  };
+
+  // Standalone HTML document for QZ Tray's "pixel printing" — renders the
+  // receipt as a normal printed page via the printer's own regular driver,
+  // for any printer that ISN'T a thermal/receipt printer (a Canon/HP/Epson
+  // inkjet or laser, for example). Mirrors the same markup/CSS openReceiptModal
+  // builds for #receiptPaper, inlined into one self-contained page so QZ Tray
+  // can render it without depending on this app's own stylesheet being
+  // reachable from wherever QZ Tray's rendering process runs.
+  //
+  // PIXEL_PRINT_DEAD_ZONE_MM: a regular inkjet/laser printer (e.g. Canon
+  // G2010) reserves a fixed hardware-level non-printable margin on EVERY
+  // edge (not just left/right) of whatever page it's fed, and genuinely
+  // cannot be told to ignore it (margins:0 only controls QZ Tray/driver-
+  // added SOFTWARE margin, not this hardware one). Requesting a page
+  // exactly 58mm/80mm wide, with content flush to the top, let that
+  // hardware dead-zone eat directly into the receipt's own content on both
+  // axes — confirmed by real prints: 58mm came back ~48mm wide, the cafe
+  // name was clipped clean off the top, and a small residual left clip
+  // remained even after widening the page by 2x6mm per side. This value is
+  // the reserve kept on EACH edge (so the page/padding math below adds
+  // 2x this amount on width, and this amount on top); it was bumped from
+  // an initial 6mm/side to close that residual gap. The fix: request a
+  // page this many mm larger than the true content on every affected edge,
+  // and center/offset the true-size content inside it, so the dead-zone is
+  // consumed by the extra margin instead of real receipt content.
+  const PIXEL_PRINT_DEAD_ZONE_MM = 16;
+  const buildPixelReceiptHtml_ = (receipt) => {
+    const cafeName = esc((state.settings && state.settings.cafeName) || "Chai' Bee'");
+    const itemsRows = receipt.items
+      .map(
+        (it) => `
+        <tr>
+          <td>${esc(it.name)}</td>
+          <td class="text-right">${it.qty}</td>
+          <td class="text-right">${it.unitPrice.toFixed(2)}</td>
+          <td class="text-right">${it.lineTotal.toFixed(2)}</td>
+        </tr>`
+      )
+      .join('');
+    const discountRows =
+      receipt.discountAmount > 0
+        ? `
+        <div class="row"><span>Subtotal</span><span>₹ ${receipt.subtotal.toFixed(2)}</span></div>
+        <div class="row"><span>Discount</span><span>− ₹ ${receipt.discountAmount.toFixed(2)}</span></div>`
+        : '';
+
+    // This HTML is rendered directly by QZ Tray's own print pipeline — the
+    // @media print rules in styles.css (keyed on body[data-receipt-format])
+    // have NO effect here, since this is an entirely separate standalone
+    // document, not the app's own page. Previously this was hardcoded to a
+    // single fixed size no matter which format (58mm/80mm/A5/A4) was
+    // selected, so a regular-printer QZ Tray job always came out the same
+    // size regardless of the setting. Sizing is now driven by the same
+    // posReceiptFormat the rest of the app uses, in real mm/font-size values
+    // matching the browser-print CSS, so switching formats actually changes
+    // what prints through this path too.
+    const fmt = state.posReceiptFormat || '80mm';
+    // widthMm is the TRUE content width we want to actually see on paper —
+    // this must stay exactly 58/80mm (what the user measures with a ruler).
+    // pageWidthMm is what we ask the PRINTER/driver for, which is wider than
+    // the content by a safety margin. This is deliberate: a regular inkjet
+    // driver (e.g. Canon G2010) reserves its own small hardware dead-zone on
+    // every edge of whatever page size it's given, and CANNOT be told to
+    // print truly edge-to-edge no matter what margins:0 requests. Asking for
+    // a page exactly 58mm/80mm wide meant that dead-zone ate directly into
+    // the receipt's content area, clipping ~10mm off — which is what the
+    // "cut off on the left" reports and ruler measurements (58mm measuring
+    // ~48mm, 80mm measuring narrower/wider than requested) were showing.
+    // PIXEL_PRINT_DEAD_ZONE_MM is reserved on EACH edge: the page is made
+    // wider than the content by 2x that amount (left + right reserve), and
+    // real content is pushed down from the top of the page by that same
+    // amount so the header isn't the thing the driver's top dead-zone eats
+    // into. The narrower .paper div is centered inside the wider page
+    // (margin:0 auto below), so the dead-zone is consumed by the reserved
+    // margin instead of by real content on any edge.
+    const widthMm = { '58mm': 58, '80mm': 80, A5: 148, A4: 210 }[fmt] || 80;
+    // On A4/A5, real measurements came back proportionally smaller than
+    // requested (A4: 210mm asked, 190.8mm printed, ratio 0.909; A5: 148mm
+    // asked, 135mm printed, ratio 0.912) — both ~9%, not a fixed mm loss
+    // like 58mm/80mm had. That's a different mechanism from 58/80mm:
+    // scaleContent:true shrinks the WHOLE requested page (content included)
+    // proportionally to fit inside the printer's actual printable area,
+    // which on a standard driver-recognized sheet size is smaller than the
+    // full nominal sheet. Unlike 58/80mm, the PAGE size here must stay at
+    // the true nominal A4/A5 dimensions (210mm/148mm) — that's what tells
+    // the driver which real sheet to feed, and inflating it would just ask
+    // for a bigger non-standard page, re-introducing the 58/80mm problem on
+    // a format that doesn't have it. Instead the CONTENT's own layout width
+    // (contentWidthMm, used by .paper below — NOT pageWidthMm, which stays
+    // true-size) is inflated by the inverse of the measured scale-down
+    // ratio, so that after the driver shrinks the whole page by ~9%, the
+    // content lands back at its true 210mm/148mm size.
+    const A4_A5_SCALE_COMPENSATION = 1 / 0.90;
+    const pageWidthMm = (fmt === '58mm' || fmt === '80mm') ? widthMm + 2 * PIXEL_PRINT_DEAD_ZONE_MM : widthMm;
+    const contentWidthMm = (fmt === 'A4' || fmt === 'A5') ? widthMm * A4_A5_SCALE_COMPENSATION : widthMm;
+    // Padding used to live directly on .paper (the content box itself),
+    // which — combined with box-sizing:border-box — shrank the live
+    // content area below the already-too-narrow page width. .paper now
+    // stays at the true widthMm with zero padding; the dead-zone reserve
+    // lives entirely on .paper-outer instead, outside the measured content,
+    // as top padding (the edge that was clipping the header) plus a little
+    // breathing room at the bottom. Left/right reserve comes from
+    // .paper-outer's own wider pageWidthMm plus .paper's margin:0 auto
+    // centering it, not from padding here.
+    const paddingCss = (fmt === '58mm' || fmt === '80mm')
+      ? `${PIXEL_PRINT_DEAD_ZONE_MM}mm 0 4mm`
+      : { A5: '10mm', A4: '15mm' }[fmt] || '0';
+    const itemsFontSize = fmt === '58mm' ? '9.5px' : '11px';
+    const firstColWidth = fmt === '58mm' ? '40%' : '46%';
+    const otherColWidth = fmt === '58mm' ? '24%' : '18%';
+
+    // Returning pageWidthMm alongside the HTML (rather than just the string)
+    // lets printReceiptViaQzTray_ request EXACTLY this same width from QZ
+    // Tray/the driver — the two must always stay in sync (see comment above
+    // where pageWidthMm is computed), so this is the one place either value
+    // is computed; nothing downstream recomputes it independently.
+    const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { background: #fff; color: #111; font-family: 'Courier New', monospace; margin: 0; }
+  .paper-outer { width: ${pageWidthMm}mm; padding: ${paddingCss}; margin: 0 auto; }
+  .paper { width: ${contentWidthMm}mm; margin: 0 auto; }
+  .header { text-align: center; }
+  .cafe-name { font-size: 15px; font-weight: 700; letter-spacing: 0.5px; }
+  .meta { font-size: 11px; color: #333; }
+  .divider { border-top: 1px dashed #999; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: ${itemsFontSize}; table-layout: fixed; }
+  th { text-align: left; font-weight: 700; border-bottom: 1px solid #999; padding: 0 4px 3px 0; }
+  td { padding: 2px 4px 2px 0; vertical-align: top; word-break: break-word; }
+  th:first-child, td:first-child { width: ${firstColWidth}; }
+  th:not(:first-child), td:not(:first-child) { width: ${otherColWidth}; white-space: nowrap; }
+  th:last-child, td:last-child { padding-right: 0; }
+  .text-right { text-align: right; }
+  .row { display: flex; justify-content: space-between; font-size: 11px; color: #333; }
+  .total-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
+  .footer { text-align: center; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <div class="paper-outer">
+  <div class="paper">
+    <div class="header">
+      <div class="cafe-name">${cafeName}</div>
+      <div class="meta">${esc(receipt.branch)}</div>
+      <div class="meta">${esc(receipt.date)} • ${esc(receipt.time)}</div>
+      <div class="meta">Bill No: ${esc(receipt.orderId)}</div>
+    </div>
+    <div class="divider"></div>
+    <table>
+      <thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Amt</th></tr></thead>
+      <tbody>${itemsRows}</tbody>
+    </table>
+    <div class="divider"></div>
+    ${discountRows}
+    <div class="total-row"><span>TOTAL</span><span>₹ ${receipt.total.toFixed(2)}</span></div>
+    <div class="meta" style="margin-top:6px;">Paid via ${esc(receipt.paymentMode)}</div>
+    <div class="divider"></div>
+    <div class="footer">Thank you, visit again!</div>
+  </div>
+  </div>
+</body>
+</html>`;
+    // Base heights already carry generous slack for a normal-length receipt;
+    // the top/bottom padding added above (PIXEL_PRINT_DEAD_ZONE_MM + 4mm) is
+    // added on top of that explicitly here too, rather than relying on the
+    // existing slack alone, so a longer receipt (more items) can't push the
+    // footer past the bottom of a page that was sized before this padding
+    // existed. A4/A5 stay at their TRUE nominal page height here (unlike
+    // width above, the PAGE size requested from the driver is not inflated
+    // for A4/A5 — only the inner content layout width is, via
+    // contentWidthMm — unlike 58/80mm, which inflates the page itself; see
+    // the contentWidthMm comment above for why the two formats need
+    // opposite treatment).
+    const baseHeightMm = { '58mm': 150, '80mm': 200, A5: 210, A4: 297 }[fmt] || 200;
+    const heightMm = (fmt === '58mm' || fmt === '80mm') ? baseHeightMm + PIXEL_PRINT_DEAD_ZONE_MM + 4 : baseHeightMm;
+    return { html, pageWidthMm, heightMm };
+  };
+
+  const printReceiptViaQzTray_ = (receipt) => {
+    return qzEnsureConnected_()
+      .then(() => {
+        const printerName = (state.settings.qzTrayPrinterName || '').trim();
+        if (printerName) {
+          return printerName;
+        }
+        // Passing null/empty straight into qz.configs.create() relies on
+        // undocumented fallback behavior in QZ Tray itself — on some setups
+        // (no system default printer configured in the OS, or more than one
+        // printer with none marked default) that silently fails with an
+        // opaque "no printer found" error, which is what was happening here:
+        // QZ Tray connects fine (Test Connection passes), but qz.print()
+        // then rejects, and printReceiptNow_ falls back to window.print() —
+        // producing exactly the OS print dialog QZ Tray mode exists to avoid,
+        // with the real reason buried in a toast easy to miss behind that
+        // dialog. Resolving the default printer by name explicitly here
+        // means a missing default fails with a clear, specific message
+        // instead (see the catch below), and succeeds in the one case that
+        // previously could still work (a real OS default IS set).
+        return qz.printers.getDefault().catch(() => {
+          throw new Error('No default printer is set on this PC. Open Settings → Printing and enter the exact printer name (see "List Available Printers"), or set a default printer in this PC\'s OS settings.');
+        });
+      })
+      .then((resolvedPrinterName) => {
+        const isRegularPrinter = (state.settings.qzTrayPrinterType || 'thermal') === 'regular';
+        // For a regular printer, also tell QZ Tray the physical page size to
+        // use — without this, qz.configs.create() falls back to the
+        // printer's own default page size (typically A4/Letter) regardless
+        // of which bill size (58mm/80mm/A5/A4) is selected in the app, so
+        // the format setting had no effect on the actual printed page here
+        // either, only on the HTML content's own width inside whatever page
+        // size the printer defaulted to.
+        //
+        // IMPORTANT: these page widths are deliberately WIDER than the real
+        // receipt content width (58mm/80mm) by the same DEAD_ZONE_MM margin
+        // buildPixelReceiptHtml_() already adds around its own content (see
+        // that function). A regular inkjet/laser printer (e.g. Canon G2010)
+        // reserves a fixed hardware-level non-printable margin on every edge
+        // of whatever page it's fed, and genuinely cannot be told to ignore
+        // it — asking for an exact 58mm/80mm page meant that dead zone ate
+        // directly into the receipt's own content, clipping text (confirmed
+        // by ruler measurements coming back narrower than requested). Asking
+        // for a page 12mm wider than the content, with the content itself
+        // centered and kept at its true width inside that page, means the
+        // dead zone is consumed by the extra margin instead of real content.
+        // 58mm×150mm/80mm×200mm are also not standard sizes a desktop
+        // driver has registered (it only knows A4, Letter, 4x6, etc), so
+        // size.custom:true tells QZ Tray/the driver to honor the exact
+        // numbers given rather than silently substituting its own nearest
+        // registered page size — harmless for A4/A5, which ARE standard.
+        //
+        // pixelReceipt.pageWidthMm/heightMm come straight from
+        // buildPixelReceiptHtml_ — the SAME function that laid out the HTML
+        // — so the page size requested here always exactly matches the
+        // HTML's own real width. Computing this size independently here
+        // (as a previous version did) risked the two drifting apart, which
+        // defeats the whole fix: scaleContent:true would then just rescale
+        // the correctly-sized HTML back down (or up) to a differently-sized
+        // page, reproducing the clipping/shrinking problem from a different
+        // angle.
+        const pixelReceipt = isRegularPrinter ? buildPixelReceiptHtml_(receipt) : null;
+        const config = isRegularPrinter
+          ? qz.configs.create(resolvedPrinterName, {
+              units: 'mm',
+              size: { width: pixelReceipt.pageWidthMm, height: pixelReceipt.heightMm, custom: true },
+              margins: 0,
+              scaleContent: true
+            })
+          : qz.configs.create(resolvedPrinterName);
+        // A regular (non-thermal) printer's driver doesn't understand raw
+        // ESC/POS control codes — the job silently produces nothing even
+        // though qz.print() resolves and this app reports success, which is
+        // exactly what was happening with a Canon inkjet. qzTrayPrinterType
+        // routes to QZ Tray's "pixel printing" (renders real HTML through the
+        // printer's normal driver, same as printing any other webpage) for
+        // that case, and raw ESC/POS only for an actual thermal/receipt
+        // printer that can interpret those commands.
+        const data = isRegularPrinter
+          ? [{ type: 'pixel', format: 'html', flavor: 'plain', data: pixelReceipt.html }]
+          : [{ type: 'raw', format: 'plain', data: buildEscPosReceipt_(receipt) }];
+        return qz.print(config, data);
+      });
+  };
+
+  // Printing the receipt: a bare `@page { size: auto; }` falls back to the
+  // browser/OS default page (Letter/A4 in most setups) instead of an actual
+  // continuous thermal roll — that stranded a tiny 58mm/80mm receipt on a
+  // mostly-blank full sheet and, since the assumed page was taller than the
+  // real content, forced the SAME receipt to repeat onto a second page. The
+  // two-value `size: <width> auto` CSS syntax is the standards-correct fix,
+  // but auto-height roll sizing isn't reliably honored by every print/PDF
+  // engine. To guarantee exactly one page with no dead space regardless of
+  // engine support, this measures the receipt's own rendered height right
+  // before printing and injects a one-off <style> with an explicit
+  // `@page { size: <width> <height>; }` (two fixed numbers — always honored)
+  // sized to the receipt's real content, then removes that style again once
+  // the print/print-preview closes so the next print (possibly a different
+  // bill length or format) gets its own fresh measurement.
+  let printReceiptStyleEl_ = null;
+  const printReceiptNow_ = () => {
+    // QZ Tray mode: skip window.print() entirely — send raw ESC/POS straight
+    // to the configured printer instead, which is both how a dialog-free
+    // "one click, one copy" print happens AND a second, independent way of
+    // avoiding the duplicate-page problem above, since there is no OS/browser
+    // page-size negotiation involved at all for this path.
+    if (state.settings.printMode === 'qztray' && state.lastReceipt) {
+      printReceiptViaQzTray_(state.lastReceipt)
+        .then(() => showToast('Bill sent to printer'))
+        .catch((err) => {
+          showToast(`QZ Tray print failed: ${err && err.message ? err.message : err} — falling back to browser print`, 'warning');
+          printReceiptNow_browser_();
+        });
+      return;
+    }
+    printReceiptNow_browser_();
+  };
+
+  const printReceiptNow_browser_ = () => {
+    const paper = document.getElementById('receiptPaper');
+    if (!paper) { window.print(); return; }
+
+    const formatWidths = { '58mm': 58, '80mm': 80, A5: 148, A4: 210 };
+    const formatPadding = { '58mm': '2mm 3mm', '80mm': '3mm 4mm', A5: '10mm', A4: '15mm' };
+    const fmt = state.posReceiptFormat || '80mm';
+    const widthMm = formatWidths[fmt] || 80;
+
+    // #receiptPaper's on-screen width inside the modal (CSS .receipt-paper
+    // max-width: 340px) is NOT its real print-time width — 80mm is only
+    // ~302px, 58mm only ~219px, both narrower than the modal. Measuring
+    // scrollHeight at the wider on-screen width under-counts how much the
+    // item-name column wraps once a real print narrows it, which produced a
+    // too-short page estimate and sent a long receipt into pagination. To
+    // get an accurate height, clone the receipt markup into an off-screen
+    // element forced to the REAL print width/padding/font-size (matching the
+    // @media print rules in styles.css for this format) and measure that
+    // clone instead — the on-screen original is left untouched throughout.
+    const pxToMm = (px) => (px / 96) * 25.4; // CSS px -> mm at 96dpi
+    const measureEl = document.createElement('div');
+    measureEl.style.cssText = `position:absolute; left:-9999px; top:0; visibility:hidden; width:${widthMm}mm; padding:${formatPadding[fmt] || '3mm 4mm'}; font-family:'Courier New', monospace; box-sizing:border-box;`;
+    if (fmt === '58mm') measureEl.style.fontSize = '9.5px'; // matches the 58mm-only font-size override in styles.css
+    measureEl.innerHTML = paper.innerHTML;
+    document.body.appendChild(measureEl);
+    const contentHeightMm = pxToMm(measureEl.scrollHeight) + 4; // small safety margin
+    document.body.removeChild(measureEl);
+
+    if (printReceiptStyleEl_) { printReceiptStyleEl_.remove(); printReceiptStyleEl_ = null; }
+    const styleEl = document.createElement('style');
+    styleEl.setAttribute('data-print-receipt-size', '1');
+    styleEl.textContent = `@media print { @page { size: ${widthMm}mm ${Math.max(20, Math.round(contentHeightMm))}mm; margin: 0; } }`;
+    document.head.appendChild(styleEl);
+    printReceiptStyleEl_ = styleEl;
+
+    const cleanup = () => {
+      if (printReceiptStyleEl_) { printReceiptStyleEl_.remove(); printReceiptStyleEl_ = null; }
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+
+    window.print();
+  };
+
+  // Renders the just-checked-out bill as a receipt the owner can print on a
+  // thermal printer (58mm/80mm) or a regular sheet (A5/A4) — the format toggle
+  // swaps a data-receipt-format attribute on <body> that the print stylesheet
+  // (see styles.css, @media print rules) uses to size the page/@page width.
+  // window.print() hands off to whatever printer is set as the OS default; a
+  // thermal printer set up that way prints the narrow layout directly, same as
+  // any other print job — no special hardware SDK needed. When the owner has
+  // configured a QZ Tray print agent in Settings, printReceiptNow_/this flow
+  // is bypassed in favor of printViaQzTray_ (see the Printing Settings page)
+  // for a silent, dialog-free print straight to a named printer.
+  const openReceiptModal = (receipt) => {
+    if (!appModalBackdrop || !modalTitle || !modalBody || !receipt) return;
+    const dialogEl = document.querySelector('.modal-dialog');
+    if (dialogEl) dialogEl.classList.add('modal-dialog--wide');
+
+    modalTitle.textContent = `Bill ${receipt.orderId}`;
+    document.body.setAttribute('data-receipt-format', state.posReceiptFormat || '80mm');
+
+    modalBody.innerHTML = `
+      <div class="receipt-format-row no-print">
+        <span class="form-label" style="margin:0;">Print size:</span>
+        ${['58mm', '80mm', 'A5', 'A4']
+          .map(
+            (f) => `
+          <button type="button" class="table-action-btn receipt-format-btn ${f === (state.posReceiptFormat || '80mm') ? 'is-active' : ''}" data-action="set-receipt-format" data-format="${f}">${f}</button>
+        `
+          )
+          .join('')}
+      </div>
+
+      <div class="receipt-paper" id="receiptPaper">
+        <div class="receipt-header">
+          <div class="receipt-cafe-name">${esc((state.settings && state.settings.cafeName) || "Chai' Bee'")}</div>
+          <div class="receipt-meta">${esc(receipt.branch)}</div>
+          <div class="receipt-meta">${esc(receipt.date)} • ${esc(receipt.time)}</div>
+          <div class="receipt-meta">Bill No: ${esc(receipt.orderId)}</div>
+        </div>
+        <div class="receipt-divider"></div>
+        <table class="receipt-items">
+          <thead>
+            <tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Rate</th><th class="text-right">Amt</th></tr>
+          </thead>
+          <tbody>
+            ${receipt.items
+              .map(
+                (it) => `
+              <tr>
+                <td>${esc(it.name)}</td>
+                <td class="text-right">${it.qty}</td>
+                <td class="text-right">${it.unitPrice.toFixed(2)}</td>
+                <td class="text-right">${it.lineTotal.toFixed(2)}</td>
+              </tr>
+            `
+              )
+              .join('')}
+          </tbody>
+        </table>
+        <div class="receipt-divider"></div>
+        ${
+          receipt.discountAmount > 0
+            ? `
+        <div class="receipt-subtotal-row"><span>Subtotal</span><span>₹ ${receipt.subtotal.toFixed(2)}</span></div>
+        <div class="receipt-subtotal-row"><span>Discount</span><span>− ₹ ${receipt.discountAmount.toFixed(2)}</span></div>
+        `
+            : ''
+        }
+        <div class="receipt-total-row">
+          <span>TOTAL</span>
+          <span>₹ ${receipt.total.toFixed(2)}</span>
+        </div>
+        <div class="receipt-meta" style="margin-top:6px;">Paid via ${esc(receipt.paymentMode)}</div>
+        <div class="receipt-divider"></div>
+        <div class="receipt-footer">Thank you, visit again!</div>
+      </div>
+
+      <div class="form-field form-field--full no-print" style="margin-top:14px;">
+        <button type="button" class="primary-cta-pill" style="width:100%;justify-content:center;" data-action="print-receipt">Print Bill</button>
+      </div>
+    `;
+
+    appModalBackdrop.removeAttribute('hidden');
   };
 
   // =========================================================================
@@ -2242,8 +3327,226 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const renderModulePage = (pageId) => {
     if (!dynamicModuleView) return;
+    // Every action that mutates business data (checkout, EOD entry, expenses,
+    // restock, staff/contact adds, BOM edits, ...) re-renders the current page
+    // right after, so this is a reliable, blanket save point — see the
+    // persistLocalBusinessData comment above for why this exists at all.
+    persistLocalBusinessData();
 
     switch (pageId) {
+      case 'new-sale': {
+        const categories = ['All', ...Array.from(new Set(state.products.map((p) => p.category)))];
+        const visibleProducts = state.products.filter(
+          (p) => state.posCategoryFilter === 'All' || p.category === state.posCategoryFilter
+        );
+        const activeBill = getActiveBill();
+        const cart = activeBill.items;
+        const cartSubtotal = cart.reduce((sum, c) => sum + c.qty * c.unitPrice, 0);
+        const cartQty = cart.reduce((sum, c) => sum + c.qty, 0);
+        const discountAmount =
+          activeBill.discountType === 'flat'
+            ? Math.min(cartSubtotal, Math.max(0, Number(activeBill.discountValue) || 0))
+            : activeBill.discountType === 'pct'
+              ? Math.round(cartSubtotal * (Math.min(100, Math.max(0, Number(activeBill.discountValue) || 0)) / 100) * 100) / 100
+              : 0;
+        const cartTotal = Math.round((cartSubtotal - discountAmount) * 100) / 100;
+
+        dynamicModuleView.innerHTML = `
+          <section class="hero-row">
+            <div class="hero-greeting">
+              <p class="greeting-line">Counter Checkout • <strong>${state.branch}</strong></p>
+              <h1 class="hero-title">New Sale</h1>
+              <p class="hero-subtitle">Tap items to add to the bill, hold it to start another, then check out and print a receipt</p>
+            </div>
+            <div class="filter-tabs">
+              ${categories
+                .map(
+                  (c) => `
+                <button type="button" class="filter-tab ${state.posCategoryFilter === c ? 'active' : ''}" data-action="filter-pos-products" data-category="${c}">${c}</button>
+              `
+                )
+                .join('')}
+            </div>
+          </section>
+
+          <section class="card module-card pos-bills-strip">
+            <div class="card-header">
+              <h2 class="card-title">Open Bills</h2>
+              <button type="button" class="table-action-btn" data-action="pos-new-bill">+ New Bill</button>
+            </div>
+            <div class="pos-bills-list">
+              ${state.heldBills
+                .map((b) => {
+                  const bTotal = b.items.reduce((s, c) => s + c.qty * c.unitPrice, 0);
+                  const bQty = b.items.reduce((s, c) => s + c.qty, 0);
+                  const isActive = b.id === activeBill.id;
+                  return `
+                <div class="pos-bill-chip ${isActive ? 'is-active' : ''}" data-action="pos-switch-bill" data-id="${esc(b.id)}">
+                  <div class="pos-bill-chip-main">
+                    <span class="pos-bill-chip-title">Bill ${b.number}${b.label ? ` · ${esc(b.label)}` : ''}</span>
+                    <span class="pos-bill-chip-meta">${bQty} item${bQty === 1 ? '' : 's'} • ${formatINR(bTotal)}</span>
+                  </div>
+                  ${state.heldBills.length > 1 ? `<button type="button" class="pos-remove-btn" data-action="pos-discard-bill" data-id="${esc(b.id)}" title="Discard this bill">✕</button>` : ''}
+                </div>
+              `;
+                })
+                .join('')}
+            </div>
+          </section>
+
+          <div class="module-grid-2">
+            <section class="card module-card">
+              <div class="card-header">
+                <h2 class="card-title">${visibleProducts.length} Items</h2>
+                <span class="status-pill status-pill--purple">${state.posCategoryFilter}</span>
+              </div>
+              <div class="pos-product-grid">
+                ${visibleProducts
+                  .map(
+                    (p) => `
+                  <button type="button" class="pos-product-tile" data-action="pos-add-item" data-id="${esc(p.id)}">
+                    <img class="pos-product-thumb" src="${esc(getProductImageSrc_(p))}" alt="" loading="lazy" />
+                    <span class="pos-product-name">${esc(p.name)}</span>
+                    <span class="pos-product-price tabular-nums">${formatINR(p.sellingPrice)}</span>
+                  </button>
+                `
+                  )
+                  .join('')}
+              </div>
+            </section>
+
+            <section class="card module-card pos-cart-card">
+              <div class="card-header">
+                <h2 class="card-title">Bill ${activeBill.number}${activeBill.label ? ` · ${esc(activeBill.label)}` : ''}</h2>
+                <span class="status-pill status-pill--purple">${cartQty} item${cartQty === 1 ? '' : 's'}</span>
+              </div>
+
+              <div class="form-field form-field--full" style="margin-bottom:10px;">
+                <input class="form-input" type="text" placeholder="Label this bill (table / customer name, optional)" value="${esc(activeBill.label || '')}" data-action-input="pos-bill-label" />
+              </div>
+
+              ${
+                cart.length === 0
+                  ? `<p class="table-empty-note">Tap a product on the left to start this bill.</p>`
+                  : `
+              <div class="pos-cart-list">
+                ${cart
+                  .map(
+                    (c, idx) => `
+                  <div class="pos-cart-row">
+                    <div class="pos-cart-row-main">
+                      <span class="pos-cart-name">${esc(c.name)}</span>
+                      <span class="pos-cart-line-total tabular-nums">${formatINR(c.qty * c.unitPrice)}</span>
+                    </div>
+                    <div class="pos-cart-row-controls">
+                      <button type="button" class="pos-qty-btn" data-action="pos-dec-item" data-idx="${idx}">−</button>
+                      <span class="pos-qty-value tabular-nums">${c.qty}</span>
+                      <button type="button" class="pos-qty-btn" data-action="pos-inc-item" data-idx="${idx}">+</button>
+                      <button type="button" class="pos-qty-shortcut-btn" data-action="pos-bump-item" data-idx="${idx}" data-amount="5">+5</button>
+                      <button type="button" class="pos-qty-shortcut-btn" data-action="pos-bump-item" data-idx="${idx}" data-amount="10">+10</button>
+                      <span class="pos-cart-unit-price tabular-nums">${formatINR(c.unitPrice)} each</span>
+                      <button type="button" class="pos-remove-btn" data-action="pos-remove-item" data-idx="${idx}" title="Remove">✕</button>
+                    </div>
+                  </div>
+                `
+                  )
+                  .join('')}
+              </div>
+              `
+              }
+
+              <div class="form-field form-field--full pos-discount-row">
+                <label class="form-label">Discount</label>
+                <div class="pos-discount-controls">
+                  <div class="filter-tabs">
+                    ${[
+                      { key: 'none', label: 'None' },
+                      { key: 'flat', label: '₹ Flat' },
+                      { key: 'pct', label: '% Off' }
+                    ]
+                      .map(
+                        (d) => `
+                      <button type="button" class="filter-tab ${activeBill.discountType === d.key ? 'active' : ''}" data-action="set-pos-discount-type" data-type="${d.key}">${d.label}</button>
+                    `
+                      )
+                      .join('')}
+                  </div>
+                  ${
+                    activeBill.discountType !== 'none'
+                      ? `<input class="form-input tabular-nums pos-discount-input" type="number" min="0" step="0.01" placeholder="${activeBill.discountType === 'flat' ? 'Amount ₹' : 'Percent %'}" value="${activeBill.discountValue || ''}" data-action-input="pos-discount-value" />`
+                      : ''
+                  }
+                </div>
+              </div>
+
+              <div class="pos-cart-summary">
+                ${
+                  discountAmount > 0
+                    ? `
+                <div class="pos-cart-total-row pos-cart-subtotal-row">
+                  <span>Subtotal</span>
+                  <span class="tabular-nums">${formatINR(cartSubtotal)}</span>
+                </div>
+                <div class="pos-cart-total-row pos-cart-subtotal-row">
+                  <span>Discount</span>
+                  <span class="tabular-nums">− ${formatINR(discountAmount)}</span>
+                </div>
+                `
+                    : ''
+                }
+                <div class="pos-cart-total-row">
+                  <span>Total</span>
+                  <strong class="tabular-nums">${formatINR(cartTotal)}</strong>
+                </div>
+              </div>
+
+              <div class="form-field form-field--full">
+                <label class="form-label">Payment Mode</label>
+                <div class="filter-tabs">
+                  ${['Cash', 'UPI', 'Card']
+                    .map(
+                      (m) => `
+                    <button type="button" class="filter-tab ${activeBill.paymentMode === m ? 'active' : ''}" data-action="set-pos-payment-mode" data-mode="${m}">${m}</button>
+                  `
+                    )
+                    .join('')}
+                </div>
+              </div>
+
+              <div class="form-field form-field--full" style="margin-top:14px;">
+                <button type="button" class="primary-cta-pill" style="width:100%;justify-content:center;" data-action="pos-checkout" ${cart.length === 0 ? 'disabled' : ''}>
+                  Checkout &amp; Print Bill — ${formatINR(cartTotal)}
+                </button>
+                ${cart.length > 0 ? `<button type="button" class="table-action-btn" style="width:100%;justify-content:center;margin-top:8px;" data-action="pos-clear-cart">Clear This Bill</button>` : ''}
+              </div>
+            </section>
+          </div>
+        `;
+
+        const posBillLabelInput = dynamicModuleView.querySelector('[data-action-input="pos-bill-label"]');
+        if (posBillLabelInput) {
+          posBillLabelInput.addEventListener('change', (ev) => {
+            const bill = getActiveBill();
+            bill.label = ev.target.value;
+            persistHeldBills();
+            renderModulePage('new-sale');
+          });
+        }
+
+        const posDiscountInput = dynamicModuleView.querySelector('[data-action-input="pos-discount-value"]');
+        if (posDiscountInput) {
+          posDiscountInput.addEventListener('input', (ev) => {
+            const bill = getActiveBill();
+            bill.discountValue = Number(ev.target.value) || 0;
+            persistHeldBills();
+            renderModulePage('new-sale');
+            const el = dynamicModuleView.querySelector('[data-action-input="pos-discount-value"]');
+            if (el) { el.focus(); }
+          });
+        }
+        break;
+      }
+
       case 'sales': {
         const recentDays = (state.dailySummary || []).slice(-10).reverse();
         dynamicModuleView.innerHTML = `
@@ -2530,6 +3833,7 @@ document.addEventListener('DOMContentLoaded', () => {
               `
                 )
                 .join('')}
+              <button type="button" class="primary-cta-pill" data-action="open-modal" data-modal="add-menu-item" style="margin-left:8px;">+ Add Menu Item</button>
             </div>
           </section>
 
@@ -2554,7 +3858,15 @@ document.addEventListener('DOMContentLoaded', () => {
                       .map(
                         (p) => `
                       <tr class="product-row ${p.id === prod.id ? 'is-selected-row' : ''}" data-action="select-product" data-id="${esc(p.id)}" style="cursor:pointer;">
-                        <td><strong>${esc(p.name)}</strong><div class="item-cat" style="font-size:11px;">${esc(p.id)} · ${esc(p.category)}</div></td>
+                        <td>
+                          <div style="display:flex;align-items:center;gap:8px;">
+                            <img src="${esc(getProductImageSrc_(p))}" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:6px;background:#f1ebe3;flex-shrink:0;" />
+                            <div>
+                              <strong>${esc(p.name)}</strong>
+                              <div class="item-cat" style="font-size:11px;">${esc(p.id)} · ${esc(p.category)}</div>
+                            </div>
+                          </div>
+                        </td>
                         <td class="text-right tabular-nums">₹ ${p.landedCost.toFixed(2)}</td>
                         <td class="text-right tabular-nums">₹ ${p.sellingPrice.toFixed(2)}</td>
                         <td class="text-right tabular-nums" style="color:${p.marginPct >= 25 ? 'var(--accent-green-ink)' : p.marginPct >= 0 ? 'var(--accent-orange-ink)' : 'var(--accent-red-ink)'};"><strong>${p.marginPct.toFixed(0)}%</strong></td>
@@ -2569,6 +3881,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             <section class="card module-card">
               <h2 class="card-title" style="margin-bottom:12px;">${esc(prod.name)}</h2>
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+                <img id="menuCostingProductPhoto" src="${esc(getProductImageSrc_(prod))}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:10px;background:#f1ebe3;flex-shrink:0;" />
+                <div>
+                  <input type="file" id="menuCostingPhotoInput" accept="image/*" data-product-id="${esc(prod.id)}" style="display:none;" />
+                  <button type="button" class="table-action-btn" data-action="trigger-product-photo-upload">Change Photo</button>
+                  <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">JPG/PNG, a few MB max</p>
+                </div>
+              </div>
               <ul class="summary-list">
                 <li class="summary-item">
                   <span class="sum-label">Landed Cost (COGS)</span>
@@ -2703,7 +4023,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <select class="form-input" id="addBomIngSelect">
                     ${state.inventory
                       .filter((i) => !bomRows.some((r) => r.ingId === i.sku))
-                      .map((i) => `<option value="${esc(i.sku)}" data-unit-cost="${i.unitCost}">${esc(i.name)} (₹${i.unitCost.toFixed(2)}/base unit)</option>`)
+                      .map((i) => `<option value="${esc(i.sku)}" data-unit-cost="${i.unitCost}">${esc(i.item)} (₹${i.unitCost.toFixed(2)}/base unit)</option>`)
                       .join('')}
                   </select>
                 </div>
@@ -2742,6 +4062,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (addBomIngSelect) addBomIngSelect.addEventListener('change', recalcAddBomPreview);
         if (addBomUsageInput) addBomUsageInput.addEventListener('input', recalcAddBomPreview);
         recalcAddBomPreview();
+
+        const photoInput = dynamicModuleView.querySelector('#menuCostingPhotoInput');
+        if (photoInput) {
+          photoInput.addEventListener('change', (ev) => {
+            const file = ev.target.files && ev.target.files[0];
+            if (!file) return;
+            const pid = photoInput.getAttribute('data-product-id');
+            readImageFileAsDataUrl_(file)
+              .then((dataUrl) => {
+                const target = state.products.find((pp) => pp.id === pid);
+                if (target) {
+                  target.imageDataUrl = dataUrl;
+                  persistLocalBusinessData();
+                  renderModulePage('menu-costing');
+                  showToast('Photo updated');
+                }
+              })
+              .catch(() => showToast('Could not read that image file', 'warning'));
+          });
+        }
         break;
       }
 
@@ -3575,6 +4915,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <section class="card module-card">
             <div class="card-header-row">
+              <h2 class="card-title">Printing</h2>
+              <p class="card-subtitle">Default bill size and how "Print Bill" sends the job to your printer</p>
+            </div>
+            <form id="printingSettingsForm" class="form-grid">
+              <div class="form-field">
+                <label class="form-label" for="setPrintMode">Print Mode</label>
+                <select class="form-select" id="setPrintMode" name="printMode">
+                  <option value="browser" ${s.printMode === 'browser' ? 'selected' : ''}>Browser print dialog (default — works everywhere)</option>
+                  <option value="qztray" ${s.printMode === 'qztray' ? 'selected' : ''}>QZ Tray — silent, one click, no dialog</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label class="form-label" for="setDefaultReceiptFormat">Default Bill Size</label>
+                <select class="form-select" id="setDefaultReceiptFormat" name="defaultReceiptFormat">
+                  <option value="58mm" ${s.defaultReceiptFormat === '58mm' ? 'selected' : ''}>58mm thermal</option>
+                  <option value="80mm" ${s.defaultReceiptFormat === '80mm' ? 'selected' : ''}>80mm thermal</option>
+                  <option value="A5" ${s.defaultReceiptFormat === 'A5' ? 'selected' : ''}>A5 sheet</option>
+                  <option value="A4" ${s.defaultReceiptFormat === 'A4' ? 'selected' : ''}>A4 sheet</option>
+                </select>
+              </div>
+              ${
+                s.printMode === 'qztray'
+                  ? `
+              <div class="form-field">
+                <label class="form-label" for="setQzTrayPrinterType">Printer Type</label>
+                <select class="form-select" id="setQzTrayPrinterType" name="qzTrayPrinterType">
+                  <option value="thermal" ${(s.qzTrayPrinterType || 'thermal') === 'thermal' ? 'selected' : ''}>Thermal / Receipt Printer (e.g. POS-80, Epson TM, Xprinter)</option>
+                  <option value="regular" ${s.qzTrayPrinterType === 'regular' ? 'selected' : ''}>Regular Printer (inkjet/laser — e.g. Canon, HP, Epson desktop printer)</option>
+                </select>
+                <p class="card-subtitle" style="margin:4px 0 0;">
+                  ${
+                    (s.qzTrayPrinterType || 'thermal') === 'thermal'
+                      ? 'Sends raw thermal-printer commands. Only works with a real receipt/thermal printer — sending these to a regular inkjet or laser printer silently prints nothing.'
+                      : 'Prints the receipt as a normal page, the same way any webpage prints — works with any regular printer\'s own driver.'
+                  }
+                </p>
+              </div>
+              <div class="form-field">
+                <label class="form-label" for="setQzTrayPrinterName">QZ Tray Printer Name</label>
+                <input class="form-input" id="setQzTrayPrinterName" name="qzTrayPrinterName" value="${esc(s.qzTrayPrinterName || '')}" placeholder="e.g. POS-80 Thermal" />
+              </div>
+              <div class="form-field">
+                <label class="form-label" for="setQzTrayHost">QZ Tray Host</label>
+                <input class="form-input" id="setQzTrayHost" name="qzTrayHost" value="${esc(s.qzTrayHost || 'localhost')}" placeholder="localhost" />
+              </div>
+              <div class="form-field form-field--full">
+                <p class="card-subtitle" style="margin:0;">
+                  QZ Tray is a free local app that must be installed and running on this till's own
+                  computer (<a href="https://qz.io/download/" target="_blank" rel="noopener">qz.io/download</a>) — it's
+                  a one-time setup per device, separate from BrewIQ itself. Once it's running, Print Bill
+                  sends the receipt straight to the named printer with no dialog and exactly one copy.
+                  Leave the printer name blank to use this PC's default printer — if printing still falls
+                  back to a dialog, this PC likely has no default printer set; use "List Available
+                  Printers" below to find the exact name and enter it above.
+                </p>
+                <button type="button" class="table-action-btn" data-action="test-qz-connection" style="margin-top:8px;">Test QZ Tray Connection</button>
+                <span id="qzTestResult" style="margin-left:10px;font-size:13px;"></span>
+                <br />
+                <button type="button" class="table-action-btn" data-action="list-qz-printers" style="margin-top:8px;">List Available Printers</button>
+                <div id="qzPrinterListResult" style="margin-top:6px;font-size:13px;"></div>
+              </div>
+              `
+                  : `
+              <div class="form-field form-field--full">
+                <p class="card-subtitle" style="margin:0;">
+                  Print Bill opens your browser's normal print dialog, where you pick the printer and hit
+                  Print — the standard way any webpage prints, no extra setup needed.
+                </p>
+              </div>
+              `
+              }
+              <div class="form-field form-field--full">
+                <button type="submit" class="primary-cta-pill">Save Printing Settings</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="card module-card">
+            <div class="card-header-row">
               <h2 class="card-title">Licenses &amp; Registrations</h2>
               <p class="card-subtitle">FSSAI, Udhyam and MSME renewal dates — alerts fire 3 days before each one is due</p>
             </div>
@@ -3778,6 +5197,25 @@ document.addEventListener('DOMContentLoaded', () => {
             </form>
           </section>
         `;
+
+        // Live-toggle the QZ Tray fields the moment Print Mode changes,
+        // without waiting for Save — same reasoning as inventorySearchInput's
+        // per-element wiring elsewhere in this file: a <select> change isn't
+        // covered by the generic delegated click handler.
+        const printModeSelect = dynamicModuleView.querySelector('#setPrintMode');
+        if (printModeSelect) {
+          printModeSelect.addEventListener('change', (ev) => {
+            state.settings.printMode = ev.target.value;
+            renderModulePage('settings');
+          });
+        }
+        const printerTypeSelect = dynamicModuleView.querySelector('#setQzTrayPrinterType');
+        if (printerTypeSelect) {
+          printerTypeSelect.addEventListener('change', (ev) => {
+            state.settings.qzTrayPrinterType = ev.target.value;
+            renderModulePage('settings');
+          });
+        }
         break;
       }
 
@@ -3886,6 +5324,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const mountOrUpdateChart = (elId, key, options) => {
     const el = document.getElementById(elId);
     if (!el || !hasApex()) return;
+    // Guard against mounting into a container with no real layout width yet
+    // — only reachable by navigating between pages faster than the browser
+    // can finish laying out the new page (e.g. rapid scripted clicks with no
+    // think-time between them), which a real person clicking the sidebar
+    // never does, but it's a one-line guard either way: ApexCharts computes
+    // NaN pixel widths/transforms and throws into the console when its
+    // container measures 0, rather than simply waiting for a size.
+    if (el.getBoundingClientRect().width === 0) {
+      requestAnimationFrame(() => mountOrUpdateChart(elId, key, options));
+      return;
+    }
     if (apexInstances[key]) {
       apexInstances[key].updateOptions(options, true, true);
     } else {
@@ -4442,6 +5891,12 @@ document.addEventListener('DOMContentLoaded', () => {
           renderModulePage('menu-costing');
           break;
 
+        case 'trigger-product-photo-upload': {
+          const input = document.getElementById('menuCostingPhotoInput');
+          if (input) input.click();
+          break;
+        }
+
         case 'goto-recipe-builder':
           // The item can still be sold with no recipe (EOD entry warns but never
           // blocks), but the owner can jump straight to adding its ingredients —
@@ -4454,6 +5909,344 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'filter-products':
           state.productCategoryFilter = actionEl.getAttribute('data-category') || 'All';
           renderModulePage('menu-costing');
+          break;
+
+        // ---- New Sale (counter checkout) cart + held-bill actions ----
+        case 'filter-pos-products':
+          state.posCategoryFilter = actionEl.getAttribute('data-category') || 'All';
+          renderModulePage('new-sale');
+          break;
+
+        case 'pos-new-bill':
+          createNewBill();
+          renderModulePage('new-sale');
+          break;
+
+        case 'pos-switch-bill':
+          state.activeBillId = actionEl.getAttribute('data-id');
+          persistHeldBills();
+          renderModulePage('new-sale');
+          break;
+
+        case 'pos-discard-bill': {
+          const billId = actionEl.getAttribute('data-id');
+          if (state.heldBills.length <= 1) break; // always keep at least one open bill
+          const idx = state.heldBills.findIndex((b) => b.id === billId);
+          if (idx === -1) break;
+          state.heldBills.splice(idx, 1);
+          if (state.activeBillId === billId) {
+            state.activeBillId = state.heldBills[0].id;
+          }
+          persistHeldBills();
+          renderModulePage('new-sale');
+          showToast('Bill discarded');
+          break;
+        }
+
+        case 'pos-add-item': {
+          const productId = actionEl.getAttribute('data-id');
+          const prod = state.products.find((p) => p.id === productId);
+          if (!prod) break;
+          const bill = getActiveBill();
+          const existing = bill.items.find((c) => c.productId === productId);
+          if (existing) {
+            existing.qty += 1;
+          } else {
+            bill.items.push({ productId: prod.id, name: prod.name, qty: 1, unitPrice: prod.sellingPrice });
+          }
+          persistHeldBills();
+          renderModulePage('new-sale');
+          break;
+        }
+
+        case 'pos-inc-item': {
+          const idx = Number(actionEl.getAttribute('data-idx'));
+          const bill = getActiveBill();
+          if (bill.items[idx]) {
+            bill.items[idx].qty += 1;
+            persistHeldBills();
+            renderModulePage('new-sale');
+          }
+          break;
+        }
+
+        case 'pos-dec-item': {
+          const idx = Number(actionEl.getAttribute('data-idx'));
+          const bill = getActiveBill();
+          if (bill.items[idx]) {
+            bill.items[idx].qty -= 1;
+            if (bill.items[idx].qty <= 0) bill.items.splice(idx, 1);
+            persistHeldBills();
+            renderModulePage('new-sale');
+          }
+          break;
+        }
+
+        case 'pos-bump-item': {
+          const idx = Number(actionEl.getAttribute('data-idx'));
+          const amount = Number(actionEl.getAttribute('data-amount')) || 0;
+          const bill = getActiveBill();
+          if (bill.items[idx] && amount > 0) {
+            bill.items[idx].qty += amount;
+            persistHeldBills();
+            renderModulePage('new-sale');
+          }
+          break;
+        }
+
+        case 'pos-remove-item': {
+          const idx = Number(actionEl.getAttribute('data-idx'));
+          const bill = getActiveBill();
+          if (bill.items[idx] !== undefined) {
+            bill.items.splice(idx, 1);
+            persistHeldBills();
+            renderModulePage('new-sale');
+          }
+          break;
+        }
+
+        case 'set-pos-payment-mode': {
+          const bill = getActiveBill();
+          bill.paymentMode = actionEl.getAttribute('data-mode') || 'Cash';
+          persistHeldBills();
+          renderModulePage('new-sale');
+          break;
+        }
+
+        case 'set-pos-discount-type': {
+          const bill = getActiveBill();
+          bill.discountType = actionEl.getAttribute('data-type') || 'none';
+          if (bill.discountType === 'none') bill.discountValue = 0;
+          persistHeldBills();
+          renderModulePage('new-sale');
+          break;
+        }
+
+        case 'pos-clear-cart': {
+          const bill = getActiveBill();
+          bill.items = [];
+          persistHeldBills();
+          renderModulePage('new-sale');
+          break;
+        }
+
+        case 'pos-checkout': {
+          const bill = getActiveBill();
+          const cart = bill.items;
+          if (cart.length === 0) break;
+
+          const today = new Date().toISOString().slice(0, 10);
+          const orderId = 'ORD-' + new Date().getTime();
+          const paymentMode = bill.paymentMode || 'Cash';
+          let cartSubtotal = 0;
+          let cartCost = 0;
+          let cartQtyTotal = 0;
+
+          cart.forEach((c) => {
+            cartSubtotal += c.qty * c.unitPrice;
+          });
+          const discountAmount =
+            bill.discountType === 'flat'
+              ? Math.min(cartSubtotal, Math.max(0, Number(bill.discountValue) || 0))
+              : bill.discountType === 'pct'
+                ? Math.round(cartSubtotal * (Math.min(100, Math.max(0, Number(bill.discountValue) || 0)) / 100) * 100) / 100
+                : 0;
+          // Discount is applied at the bill/order level (one flat ₹ or % off the
+          // whole bill, matching how a counter discount is actually given), then
+          // spread across line items proportionally to their own share of the
+          // subtotal so each DAILY_SALES row still reflects real revenue per
+          // product — margin/food-cost reporting per item stays accurate instead
+          // of the discount silently vanishing from the numbers.
+          const discountFactor = cartSubtotal > 0 ? (cartSubtotal - discountAmount) / cartSubtotal : 1;
+
+          // Each recordSale call is its own POST to Code.gs (one per cart line,
+          // so a multi-item bill fires several in a row). These are collected
+          // rather than fired-and-forgotten so the resync below can wait for
+          // every one of them to actually land on the server before pulling
+          // DAILY_SUMMARY back down — syncing on a fixed timer instead let a
+          // slow Apps Script round-trip (cold start, several sequential sheet
+          // writes) lose the race, overwriting the just-recorded sale's local
+          // total with a server summary that hadn't been updated yet, which is
+          // what made a bill appear to "vanish" after checkout/refresh.
+          const recordSalePromises = [];
+
+          cart.forEach((c) => {
+            const prod = state.products.find((p) => p.id === c.productId);
+            if (!prod) return;
+            const lineGross = c.qty * c.unitPrice;
+            const lineNet = Math.round(lineGross * discountFactor * 100) / 100;
+            cartCost += c.qty * prod.landedCost;
+            cartQtyTotal += c.qty;
+
+            recordSalePromises.push(apiCall('recordSale', {
+              productId: c.productId,
+              date: today,
+              branch: state.branch,
+              qty: c.qty,
+              previousQty: 0,
+              orderId,
+              paymentMode,
+              netSalesOverride: lineNet
+            }));
+
+            const bomRows = (state.recipeBom || []).filter((r) => r.productId === prod.id);
+            bomRows.forEach((r) => {
+              const ing = state.inventory.find((i) => i.sku === r.ingId);
+              if (ing) {
+                ing.stock = Math.max(0, Math.round((ing.stock - r.usageQtyPerUnit * c.qty) * 100) / 100);
+              }
+            });
+          });
+
+          const cartTotal = Math.round((cartSubtotal - discountAmount) * 100) / 100;
+
+          // Fold this bill into TODAY's dailySummary row the same way the EOD page's
+          // own totals live there — additively, since the counter takes sales
+          // continuously through the day while EOD entry is a separate end-of-day
+          // reconciliation total. This (not a one-off bump to state.totalRevenue)
+          // is what every KPI and chart on the dashboard actually reads, and what
+          // survives a syncFromSheet recompute afterwards.
+          const todayLabel = new Date(today).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+          if (!state.dailySummary) state.dailySummary = [];
+          const todayIdx = state.dailySummary.findIndex((d) => d.isoDate === today || d.date === todayLabel);
+          const roundedCost = Math.round(cartCost * 100) / 100;
+          const roundedSales = cartTotal;
+          const roundedProfit = Math.round((roundedSales - roundedCost) * 100) / 100;
+          if (todayIdx >= 0) {
+            const row = state.dailySummary[todayIdx];
+            row.qty += cartQtyTotal;
+            row.cost = Math.round((row.cost + roundedCost) * 100) / 100;
+            row.sales = Math.round((row.sales + roundedSales) * 100) / 100;
+            row.profit = Math.round((row.profit + roundedProfit) * 100) / 100;
+          } else {
+            state.dailySummary.push({ date: todayLabel, isoDate: today, qty: cartQtyTotal, cost: roundedCost, sales: roundedSales, profit: roundedProfit });
+          }
+
+          // Recompute the aggregate KPIs from dailySummary, same formula syncFromSheet
+          // uses, so the dashboard reflects this bill immediately without waiting on
+          // a round-trip or a later sync to overwrite a hand-bumped total.
+          state.totalRevenue = state.dailySummary.reduce((s, d) => s + d.sales, 0);
+          state.totalOrders = state.dailySummary.reduce((s, d) => s + d.qty, 0);
+          const latestDay = state.dailySummary[state.dailySummary.length - 1];
+          if (latestDay) {
+            state.todayRevenue = latestDay.sales;
+            state.todayOrders = latestDay.qty;
+          }
+
+          state.lastReceipt = {
+            orderId,
+            date: today,
+            time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            branch: state.branch,
+            paymentMode,
+            items: cart.map((c) => ({ name: c.name, qty: c.qty, unitPrice: c.unitPrice, lineTotal: Math.round(c.qty * c.unitPrice * 100) / 100 })),
+            subtotal: Math.round(cartSubtotal * 100) / 100,
+            discountAmount: Math.round(discountAmount * 100) / 100,
+            total: cartTotal
+          };
+
+          state.sales.unshift({
+            id: orderId,
+            time: 'Just now',
+            items: `${cart.length} item${cart.length > 1 ? 's' : ''} • ${cart.reduce((s, c) => s + c.qty, 0)} units`,
+            channel: 'Counter',
+            mode: paymentMode,
+            amount: Math.round(cartTotal),
+            status: 'Recorded'
+          });
+
+          // Remove this bill from the held list (it's checked out now) and make
+          // sure at least one empty bill remains open for the next customer.
+          const billIdx = state.heldBills.findIndex((b) => b.id === bill.id);
+          if (billIdx !== -1) state.heldBills.splice(billIdx, 1);
+          if (state.heldBills.length === 0) {
+            createNewBill();
+          } else {
+            state.activeBillId = state.heldBills[0].id;
+          }
+          persistHeldBills();
+
+          renderModulePage('new-sale');
+          syncDashboardKPIs();
+          showToast(`Bill ${orderId} recorded — ${formatINR(Math.round(cartTotal))}`);
+          openReceiptModal(state.lastReceipt);
+          if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
+            // Wait for every recordSale POST to actually finish (success or
+            // failure) before resyncing, instead of guessing a fixed delay —
+            // see the comment above recordSalePromises for why a timer alone
+            // could pull back a stale DAILY_SUMMARY and wipe the local total.
+            Promise.all(recordSalePromises).then(() => {
+              syncFromSheet({ silent: true });
+            });
+          }
+          break;
+        }
+
+        case 'print-receipt':
+          printReceiptNow_();
+          break;
+
+        case 'test-qz-connection': {
+          const resultEl = document.getElementById('qzTestResult');
+          if (resultEl) { resultEl.textContent = 'Connecting…'; resultEl.style.color = 'var(--text-tertiary)'; }
+          qzEnsureConnected_()
+            .then(() => {
+              if (resultEl) { resultEl.textContent = '✓ Connected to QZ Tray'; resultEl.style.color = 'var(--success-600, #16a34a)'; }
+            })
+            .catch((err) => {
+              if (resultEl) {
+                resultEl.textContent = `✗ ${err && err.message ? err.message : 'Could not connect — is QZ Tray running on this PC?'}`;
+                resultEl.style.color = 'var(--danger-600, #dc2626)';
+              }
+            });
+          break;
+        }
+
+        case 'list-qz-printers': {
+          // A connection test passing only proves QZ Tray itself is reachable
+          // — it says nothing about whether this PC actually has a usable
+          // default printer, which is the gap that let Print Bill silently
+          // fall back to the OS dialog even with QZ Tray "connected". This
+          // lists every printer QZ Tray can see on this PC so the owner can
+          // copy the exact name into the field above instead of guessing.
+          const listEl = document.getElementById('qzPrinterListResult');
+          if (listEl) { listEl.textContent = 'Looking for printers…'; listEl.style.color = 'var(--text-tertiary)'; }
+          qzEnsureConnected_()
+            .then(() => qz.printers.find())
+            .then((names) => {
+              const list = Array.isArray(names) ? names : (names ? [names] : []);
+              if (!listEl) return;
+              if (!list.length) {
+                listEl.textContent = 'QZ Tray is connected but sees no printers on this PC — check that a printer is installed and turned on.';
+                listEl.style.color = 'var(--danger-600, #dc2626)';
+                return;
+              }
+              listEl.innerHTML = `Found: ${list.map((n) => `<code>${esc(n)}</code>`).join(', ')} — click a name to use it`;
+              listEl.style.color = 'var(--text-secondary)';
+              listEl.querySelectorAll('code').forEach((codeEl) => {
+                codeEl.style.cursor = 'pointer';
+                codeEl.style.textDecoration = 'underline';
+                codeEl.addEventListener('click', () => {
+                  const nameInput = document.getElementById('setQzTrayPrinterName');
+                  if (nameInput) nameInput.value = codeEl.textContent;
+                });
+              });
+            })
+            .catch((err) => {
+              if (listEl) {
+                listEl.textContent = `✗ ${err && err.message ? err.message : 'Could not list printers — is QZ Tray running?'}`;
+                listEl.style.color = 'var(--danger-600, #dc2626)';
+              }
+            });
+          break;
+        }
+
+        case 'set-receipt-format':
+          state.posReceiptFormat = actionEl.getAttribute('data-format') || '80mm';
+          document.body.setAttribute('data-receipt-format', state.posReceiptFormat);
+          document.querySelectorAll('.receipt-format-btn').forEach((btn) => {
+            btn.classList.toggle('is-active', btn.getAttribute('data-format') === state.posReceiptFormat);
+          });
           break;
 
         case 'export-pnl':
@@ -4681,6 +6474,11 @@ document.addEventListener('DOMContentLoaded', () => {
       let totalCost = 0;
       let totalSales = 0;
       const draft = {};
+      // See the matching comment in the pos-checkout handler: these are
+      // collected so the resync below waits for every write to actually
+      // land, instead of racing a fixed timer against several sequential
+      // Apps Script round-trips and pulling back a stale DAILY_SUMMARY.
+      const recordSalePromises = [];
 
       state.products.forEach((p) => {
         const input = document.getElementById(`eodQty_${p.id}`);
@@ -4693,13 +6491,13 @@ document.addEventListener('DOMContentLoaded', () => {
           totalCost += costValue;
           totalSales += netSales;
           rows.push({ product: p, qty, costValue, netSales });
-          apiCall('recordSale', {
+          recordSalePromises.push(apiCall('recordSale', {
             productId: p.id,
             date: eodDate,
             branch: state.branch,
             qty,
             previousQty: 0
-          });
+          }));
         }
       });
 
@@ -4776,7 +6574,9 @@ document.addEventListener('DOMContentLoaded', () => {
       closeModal();
       showToast(`EOD summary saved: ${formatINR(Math.round(totalSales))} across ${rows.length} items`);
       if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
-        setTimeout(() => syncFromSheet({ silent: true }), 1500);
+        Promise.all(recordSalePromises).then(() => {
+          syncFromSheet({ silent: true });
+        });
       }
     } else if (form.id === 'modalExpenseForm' || form.id === 'modalBillForm') {
       // Every field here is genuinely required input (no fabricated fallback
@@ -4947,7 +6747,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
         setTimeout(() => syncFromSheet({ silent: true }), 1500);
       }
-    } else if (form.id === 'settingsForm' || form.id === 'licensesForm' || form.id === 'ownerSettingsForm' || form.id === 'syncSettingsForm' || form.id === 'alertSettingsForm' || form.id === 'opsSettingsForm') {
+    } else if (form.id === 'settingsForm' || form.id === 'licensesForm' || form.id === 'ownerSettingsForm' || form.id === 'syncSettingsForm' || form.id === 'alertSettingsForm' || form.id === 'opsSettingsForm' || form.id === 'printingSettingsForm') {
       e.preventDefault();
       const fd = new FormData(form);
       const str = (key) => { const v = fd.get(key); return v !== null ? v : undefined; };
@@ -5005,6 +6805,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (form.querySelector('[name="animationsEnabled"]')) state.settings.animationsEnabled = checkbox('animationsEnabled');
       if (form.querySelector('[name="lowStockBadgeOnSidebar"]')) state.settings.lowStockBadgeOnSidebar = checkbox('lowStockBadgeOnSidebar');
       state.settings.dashboardDefaultPeriod = str('dashboardDefaultPeriod') ?? state.settings.dashboardDefaultPeriod;
+
+      // Printing
+      state.settings.printMode = str('printMode') ?? state.settings.printMode;
+      state.settings.defaultReceiptFormat = str('defaultReceiptFormat') ?? state.settings.defaultReceiptFormat;
+      state.settings.qzTrayPrinterName = str('qzTrayPrinterName') ?? state.settings.qzTrayPrinterName;
+      state.settings.qzTrayHost = str('qzTrayHost') ?? state.settings.qzTrayHost;
+      state.settings.qzTrayPrinterType = str('qzTrayPrinterType') ?? state.settings.qzTrayPrinterType;
+      if (state.settings.defaultReceiptFormat) state.posReceiptFormat = state.settings.defaultReceiptFormat;
 
       persistSettings();
       computeTimeGreeting();
@@ -5244,6 +7052,120 @@ document.addEventListener('DOMContentLoaded', () => {
         stock,
         reorder
       });
+    } else if (form.id === 'addMenuItemForm') {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const name = (fd.get('name') || '').trim();
+      const price = Number(fd.get('price'));
+      if (!name || !price || price <= 0) {
+        showToast('Please fill in the item name and a valid selling price');
+        return;
+      }
+      const categorySelect = document.getElementById('newItemCategorySelect');
+      const customCategoryInput = document.getElementById('newItemCategoryCustomInput');
+      let category = categorySelect ? categorySelect.value : 'Other';
+      if (category === '__new__') {
+        category = (customCategoryInput?.value || '').trim().toUpperCase();
+        if (!category) {
+          showToast('Enter a name for the new category');
+          return;
+        }
+      }
+
+      const maxNum = state.products.reduce((max, p) => {
+        const m = /P(\d+)/.exec(p.id);
+        return m ? Math.max(max, Number(m[1])) : max;
+      }, 0);
+      const newId = `P${String(maxNum + 1).padStart(3, '0')}`;
+
+      const gasCost = Number(fd.get('gasCost')) || 0;
+      const oilCost = Number(fd.get('oilCost')) || 0;
+      const wastageCost = Number(fd.get('wastageCost')) || 0;
+      const overheadsCost = Number(fd.get('overheadsCost')) || 0;
+      const rawCost = addMenuItemDraftBom_.reduce((s, r) => s + r.usageQtyPerUnit * r.unitCost, 0);
+      const landedCost = Math.round((rawCost + gasCost + oilCost + wastageCost + overheadsCost) * 100) / 100;
+
+      const finishCreate = (imageDataUrl) => {
+        const newProduct = {
+          id: newId,
+          name,
+          category,
+          landedCost,
+          rawCost: Math.round(rawCost * 100) / 100,
+          gasCost,
+          oilCost,
+          wastageCost,
+          overheadsCost,
+          sellingPrice: price,
+          marginRs: Math.round((price - landedCost) * 100) / 100,
+          marginPct: landedCost > 0 ? Math.round(((price - landedCost) / landedCost) * 10000) / 100 : 0,
+          dailyOrders: 0,
+          imageDataUrl: imageDataUrl || null
+        };
+        state.products.push(newProduct);
+
+        // Turn the draft BOM lines into real recipeBom rows, same shape and
+        // id scheme as every other BOM row in the app (see save-bom-row /
+        // delete-bom-row elsewhere), so this product behaves identically to
+        // one that shipped with the app from here on — Menu Costing can
+        // edit/delete these rows the normal way, and a sale of this item
+        // deducts the right ingredients from Inventory immediately.
+        if (!state.recipeBom) state.recipeBom = [];
+        const maxBomNum = state.recipeBom.reduce((max, r) => {
+          const m = /BOM-(\d+)/.exec(r.id);
+          return m ? Math.max(max, Number(m[1])) : max;
+        }, 0);
+        addMenuItemDraftBom_.forEach((r, i) => {
+          state.recipeBom.push({
+            id: `BOM-${String(maxBomNum + i + 1).padStart(3, '0')}`,
+            productId: newId,
+            productName: name,
+            ingId: r.ingId,
+            ingName: r.ingName,
+            usageQtyPerUnit: r.usageQtyPerUnit,
+            lineCost: Math.round(r.usageQtyPerUnit * r.unitCost * 100) / 100
+          });
+        });
+
+        state.selectedProductId = newId;
+        addMenuItemDraftBom_ = [];
+        persistLocalBusinessData();
+        closeModal();
+        renderModulePage('menu-costing');
+        showToast(`${name} added to the menu (${newId})`);
+
+        // Best-effort Sheet sync, exactly like every other add-* action —
+        // a no-op when no Sheet is connected (apiCall itself handles that),
+        // and if a Sheet IS connected but its Code.gs doesn't have an
+        // addProduct handler yet, this fails silently the same way any
+        // unrecognized action would, without blocking the item from being
+        // created locally. Deliberately NOT adding that Code.gs handler
+        // here — the owner asked to hold off on Code.gs changes for now.
+        apiCall('addProduct', {
+          id: newId,
+          name,
+          category,
+          sellingPrice: price,
+          gasCost,
+          oilCost,
+          wastageCost,
+          overheadsCost,
+          recipeBom: addMenuItemDraftBom_
+        });
+      };
+
+      const photoInput = document.getElementById('newItemPhotoInput');
+      const photoFile = photoInput && photoInput.files && photoInput.files[0];
+      if (photoFile) {
+        readImageFileAsDataUrl_(photoFile)
+          .then((dataUrl) => finishCreate(dataUrl))
+          .catch(() => {
+            showToast('Could not read that photo — item created without one', 'warning');
+            finishCreate(null);
+          });
+      } else {
+        finishCreate(null);
+      }
     }
   });
 
