@@ -25,7 +25,7 @@
 // Database — only the cached copies of the app's own files are replaced.
 // ============================================================================
 
-const CACHE_VERSION = 'brewiq-v1';
+const CACHE_VERSION = 'brewiq-v2';
 
 // The app shell: the minimum set of files needed to render the app with no
 // network at all. Everything else (charts CDN script, Google Fonts) is
