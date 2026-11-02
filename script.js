@@ -1217,14 +1217,28 @@ document.addEventListener('DOMContentLoaded', () => {
   // source of truth. The dashboard keeps working fully offline from its local state
   // either way — a failed/missing API call never blocks the UI.
   // =========================================================================
+  // One requestId per logical apiCall invocation — generated here, not by
+  // each call site, so every mutating action automatically gets Code.gs's
+  // idempotency guard for free. This exists because a recordSale call was
+  // once observed to leave DAILY_SUMMARY with exactly double the expected
+  // total despite only one row ever landing in DAILY_SALES — never
+  // conclusively reproduced, but consistent with a resent POST (a flaky
+  // tablet/phone connection retrying a request it never got a response
+  // for) silently re-running the same mutation. Code.gs caches the result
+  // of the first call under this id and returns that cached result if the
+  // exact same id is ever POSTed again, instead of executing twice.
+  let requestIdCounter_ = 0;
+  const makeRequestId_ = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}-${requestIdCounter_++}`;
+
   const apiCall = async (action, body = {}) => {
     const base = (state.settings.apiBaseUrl || '').trim();
     if (!base) return null;
+    const requestId = makeRequestId_();
     try {
       const res = await fetch(base, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, ...body })
+        body: JSON.stringify({ ...body, action, requestId })
       });
       if (!res.ok) {
         // A non-2xx HTTP status (expired/invalid Apps Script deployment, quota
@@ -1400,6 +1414,18 @@ document.addEventListener('DOMContentLoaded', () => {
         category: ex.Category,
         mode: ex.Payment_Mode,
         amount: Number(ex.Amount) || 0,
+        // Already_In_Cogs is a newer column — an expense row written before
+        // it existed (or by the one-time header migration) has it blank,
+        // which reads back as '' here, not true/false. Rather than silently
+        // treating every pre-existing row as "not in COGS" (which would
+        // double-count every historical Raw Material purchase against Net
+        // Profit), fall back to the same category-based default the Add
+        // Expense form itself uses when the column is genuinely missing.
+        alreadyInCogs: ex.Already_In_Cogs === true || ex.Already_In_Cogs === 'TRUE'
+          ? true
+          : ex.Already_In_Cogs === false || ex.Already_In_Cogs === 'FALSE'
+            ? false
+            : ex.Category === 'Raw Material',
         status: ex.Status || 'Paid'
       }));
     }
@@ -1489,11 +1515,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Recompute aggregate KPIs from the freshly-synced daily summary + expenses.
     if (state.dailySummary && state.dailySummary.length) {
       state.totalRevenue = state.dailySummary.reduce((s, d) => s + d.sales, 0);
-      const cogs = state.dailySummary.reduce((s, d) => s + d.cost, 0);
-      const otherExpenses = (state.expenses || []).filter((ex) => ex.category !== 'Raw Material').reduce((s, ex) => s + ex.amount, 0);
-      const staffCost = (state.staff || []).reduce((s, st) => s + st.salary, 0);
-      state.totalExpenses = cogs + otherExpenses + staffCost;
-      state.netProfit = Math.max(0, state.totalRevenue - state.totalExpenses);
+      recomputeNetProfit_();
       state.totalOrders = state.dailySummary.reduce((s, d) => s + d.qty, 0);
       const latest = state.dailySummary[state.dailySummary.length - 1];
       if (latest) {
@@ -2185,6 +2207,58 @@ document.addEventListener('DOMContentLoaded', () => {
       .join('');
   };
 
+  /**
+   * Single source of truth for Net Profit and the expense total that backs
+   * it — every mutation site (counter checkout, EOD save, delete/undo,
+   * manual expense entry, bill upload, server sync) now calls this instead
+   * of each recomputing its own "revenue minus something" formula.
+   *
+   * Replaces TWO previous bugs at once:
+   * 1. Net Profit was revenue − expenses (no COGS at all) at most call
+   *    sites, while syncFromSheet's own recompute used revenue − COGS −
+   *    expenses — two different formulas silently disagreeing depending on
+   *    which action last touched the number.
+   * 2. COGS was itself double-counted: a Raw Material purchase (milk, tea
+   *    dust, gas/LPG used in cooking) landed in Expenses AND was already
+   *    baked into every sold item's Raw_Cost/landedCost via COGS
+   *    (dailySummary.cost). Subtracting both counted the same rupee twice.
+   *    EOD's own handler added COGS straight into state.totalExpenses on
+   *    top of that, conflating "cost of goods sold" with "expenses" — a
+   *    third, separate source of the same kind of error.
+   *
+   * Correct formula: Net Profit = Revenue − COGS − (Expenses NOT already
+   * in COGS) − Staff Cost. Which expenses are "already in COGS" is decided
+   * per-expense by its own alreadyInCogs flag (set on the Add Expense
+   * form — defaults on for Raw Material, off otherwise — and on bill
+   * uploads, which are always a Raw Material-type purchase), not by
+   * category name alone: Utilities covers both gas/LPG (in COGS) and
+   * electricity (not in COGS), so a category-level rule can't tell them
+   * apart on its own.
+   */
+  const recomputeNetProfit_ = () => {
+    // state.totalExpenses stays what it's always meant on the Expenses page
+    // and its KPI card: the full ledger total of every logged voucher,
+    // Raw Material included — so it's recomputed here from the ledger
+    // itself (never drifted by +=), but never narrowed to exclude
+    // COGS-flagged expenses. Net Profit needs a DIFFERENT, narrower total
+    // (expenses not already reflected in COGS), computed separately so it
+    // never leaks back into what the Expenses page displays.
+    state.totalExpenses = Math.round(
+      (state.expenses || []).reduce((s, ex) => s + (ex.amount || 0), 0) * 100
+    ) / 100;
+
+    const cogs = (state.dailySummary || []).reduce((s, d) => s + (d.cost || 0), 0);
+    const nonCogsExpenses = (state.expenses || [])
+      .filter((ex) => !ex.alreadyInCogs)
+      .reduce((s, ex) => s + (ex.amount || 0), 0);
+    const staffCost = (state.staff || []).reduce((s, st) => s + (st.salary || 0), 0);
+    state.netProfit = Math.max(
+      0,
+      Math.round((state.totalRevenue - cogs - nonCogsExpenses - staffCost) * 100) / 100
+    );
+    return state.netProfit;
+  };
+
   const syncDashboardKPIs = () => {
     const kpiRev = document.getElementById('kpiTotalRevenue');
     const kpiProf = document.getElementById('kpiNetProfit');
@@ -2438,6 +2512,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <option value="Raw Material">Raw Material</option>
               <option value="Packaging">Packaging</option>
               <option value="Utilities">Utilities</option>
+              <option value="Rent">Rent</option>
               <option value="Maintenance">Maintenance</option>
             </select>
           </div>
@@ -2454,10 +2529,34 @@ document.addEventListener('DOMContentLoaded', () => {
             </select>
           </div>
           <div class="form-field form-field--full">
+            <label class="form-check" style="display:flex;align-items:flex-start;gap:8px;font-weight:normal;">
+              <input type="checkbox" id="expAlreadyInCogsInput" name="alreadyInCogs" checked style="margin-top:3px;" />
+              <span>
+                Already counted in item cost (COGS)
+                <br/><span class="form-hint" style="color:var(--text-tertiary);font-size:12px;">
+                  Check this for a Raw Material purchase (milk, tea dust, gas/LPG used in cooking, etc.) that's already baked into your menu items' per-unit cost — leaving it checked keeps Net Profit from subtracting it twice. Uncheck for a real overhead like rent, electricity, or marketing that isn't in any item's cost.
+                </span>
+              </span>
+            </label>
+          </div>
+          <div class="form-field form-field--full">
             <button type="submit" class="primary-cta-pill" style="width:100%;justify-content:center;">Record Expense</button>
           </div>
         </form>
       `;
+      // Default the checkbox to the common case for each category (Raw
+      // Material purchases are almost always already in COGS; Packaging/
+      // Utilities/Maintenance usually aren't) — the owner can still
+      // override it per-expense, this just saves a click for the typical case.
+      setTimeout(() => {
+        const catSelect = document.getElementById('expCatInput');
+        const cogsCheckbox = document.getElementById('expAlreadyInCogsInput');
+        if (catSelect && cogsCheckbox) {
+          catSelect.addEventListener('change', () => {
+            cogsCheckbox.checked = catSelect.value === 'Raw Material';
+          });
+        }
+      }, 0);
     } else if (type === 'upload-bill') {
       modalTitle.textContent = 'Upload Supplier Bill / OCR Ingest';
       modalBody.innerHTML = `
@@ -3597,6 +3696,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <th>Cost Value</th>
                     <th>Net Sales</th>
                     <th class="text-right">Net Profit</th>
+                    <th class="text-right">Undo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3610,14 +3710,20 @@ document.addEventListener('DOMContentLoaded', () => {
                       <td class="tabular-nums item-cat">${formatINR(d.cost)}</td>
                       <td class="tabular-nums"><strong>${formatINR(d.sales)}</strong></td>
                       <td class="text-right tabular-nums"><span class="status-pill status-pill--green">${formatINR(d.profit)}</span></td>
+                      <td class="text-right">
+                        <button type="button" class="table-action-btn" data-action="delete-eod-day" data-iso-date="${d.isoDate}" title="Delete this day's EOD entry (e.g. if it was mistakenly entered under the wrong date)">Delete</button>
+                      </td>
                     </tr>
                   `
                         )
                         .join('')
-                    : `<tr><td colspan="5" class="table-empty-note">No EOD sales logged yet — use "+ Enter Today's Sales" to get started</td></tr>`}
+                    : `<tr><td colspan="6" class="table-empty-note">No EOD sales logged yet — use "+ Enter Today's Sales" to get started</td></tr>`}
                 </tbody>
               </table>
             </div>
+            <p class="card-subtitle" style="margin-top:8px;">
+              "Delete" reverses that day's sales entirely — restores ingredient stock, removes it from this register and from the dashboard totals. Use it when a day was entered under the wrong date (then re-enter it correctly), not for a routine edit.
+            </p>
           </section>
         `;
         break;
@@ -6079,7 +6185,11 @@ document.addEventListener('DOMContentLoaded', () => {
             cartCost += c.qty * prod.landedCost;
             cartQtyTotal += c.qty;
 
-            recordSalePromises.push(apiCall('recordSale', {
+            // Captured so this line can later be reversed by
+            // Sale_Entry_ID (see the "delete sale" action) — without this,
+            // a sale is recorded but nothing on the client remembers the
+            // one identifier that lets it be undone later.
+            const salePromise = apiCall('recordSale', {
               productId: c.productId,
               date: today,
               branch: state.branch,
@@ -6088,7 +6198,20 @@ document.addEventListener('DOMContentLoaded', () => {
               orderId,
               paymentMode,
               netSalesOverride: lineNet
-            }));
+            }).then((res) => {
+              if (res && res.saleId) {
+                const logEntry = state.productSalesLog && state.productSalesLog[state.productSalesLog.length - 1];
+                // Best-effort: attach to the matching just-pushed log entry
+                // for this product/date rather than assuming array order,
+                // since other lines' promises may resolve out of order.
+                const entry = (state.productSalesLog || []).find(
+                  (r) => r.isoDate === today && r.productId === c.productId && !r.saleEntryId
+                ) || logEntry;
+                if (entry) entry.saleEntryId = res.saleId;
+              }
+              return res;
+            });
+            recordSalePromises.push(salePromise);
 
             const bomRows = (state.recipeBom || []).filter((r) => r.productId === prod.id);
             bomRows.forEach((r) => {
@@ -6156,9 +6279,10 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           // The Net Profit KPI card was never recalculated after a counter
           // checkout (only EOD entry and sync did this), so it stayed stuck
-          // at whatever value was last set — same formula EOD/sync use
-          // (revenue minus recorded expenses, floored at 0) for consistency.
-          state.netProfit = Math.max(0, state.totalRevenue - state.totalExpenses);
+          // at whatever value was last set — recomputeNetProfit_ is the one
+          // place every path now agrees on (revenue − COGS − non-COGS
+          // expenses − staff cost, floored at 0).
+          recomputeNetProfit_();
 
           state.lastReceipt = {
             orderId,
@@ -6333,6 +6457,76 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast(`${bom.ingName} cost updated for ${bom.productName}`);
           if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
             setTimeout(() => syncFromSheet({ silent: true }), 1500);
+          }
+          break;
+        }
+
+        case 'delete-eod-day': {
+          // Reverses a whole day's worth of sales (EOD entry or every
+          // counter bill recorded on that date) — the "mistakenly entered
+          // under the wrong date" undo. Deletes every underlying
+          // DAILY_SALES row for the day by Sale_Entry_ID (restoring BOM
+          // stock and subtracting back out of DAILY_SUMMARY for each one
+          // via api_deleteSale_), then removes the day from every local
+          // view the same way. Lines recorded before this feature existed,
+          // or recorded while offline/sync-off, have no saleEntryId — those
+          // are removed locally but can't be reversed on the sheet, so the
+          // toast says so plainly rather than silently leaving stale data.
+          const isoDate = actionEl.getAttribute('data-iso-date');
+          if (!isoDate) break;
+
+          const dayLabel = (state.dailySummary || []).find((d) => d.isoDate === isoDate)?.date || isoDate;
+          if (!confirm(`Delete all sales recorded on ${dayLabel}? This restores ingredient stock and removes it from the dashboard. This cannot be undone.`)) break;
+
+          const linesForDay = (state.productSalesLog || []).filter((r) => r.isoDate === isoDate);
+          const idsToDelete = linesForDay.map((r) => r.saleEntryId).filter(Boolean);
+          const missingIdCount = linesForDay.length - idsToDelete.length;
+
+          const deletePromises = idsToDelete.map((saleEntryId) => apiCall('deleteSale', { saleEntryId }));
+
+          // Reverse local state immediately (optimistic, same pattern as
+          // delete-bom-row below) rather than waiting on the network —
+          // product stock/day totals already reflect the sale locally, so
+          // undoing it should feel instant; the API calls above make the
+          // same reversal happen for real on the sheet.
+          linesForDay.forEach((r) => {
+            const prod = state.products.find((p) => p.id === r.productId);
+            if (prod) prod.dailyOrders = Math.max(0, (prod.dailyOrders || 0) - r.qty);
+            const bomRows = (state.recipeBom || []).filter((row) => row.productId === r.productId);
+            bomRows.forEach((row) => {
+              const ing = state.inventory.find((i) => i.sku === row.ingId);
+              if (ing) ing.stock = Math.round((ing.stock + row.usageQtyPerUnit * r.qty) * 100) / 100;
+            });
+          });
+          state.productSalesLog = (state.productSalesLog || []).filter((r) => r.isoDate !== isoDate);
+
+          const dayIdx = (state.dailySummary || []).findIndex((d) => d.isoDate === isoDate);
+          if (dayIdx !== -1) {
+            const day = state.dailySummary[dayIdx];
+            state.totalRevenue = Math.max(0, state.totalRevenue - day.sales);
+            state.totalOrders = Math.max(0, state.totalOrders - day.qty);
+            state.dailySummary.splice(dayIdx, 1);
+            const latestDay = state.dailySummary[state.dailySummary.length - 1];
+            state.todayRevenue = latestDay ? latestDay.sales : 0;
+            state.todayOrders = latestDay ? latestDay.qty : 0;
+          }
+          recomputeNetProfit_();
+          state.sales = (state.sales || []).filter((s) => !(s.id === `EOD-${isoDate}` ));
+
+          renderModulePage('sales');
+          syncDashboardKPIs();
+          renderAllCharts();
+
+          if (missingIdCount > 0) {
+            showToast(`Removed ${dayLabel} locally, but ${missingIdCount} line(s) had no server record to reverse (recorded before sync, or offline) — check the sheet if it's connected`);
+          } else {
+            showToast(`Deleted all sales for ${dayLabel}`);
+          }
+
+          if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
+            Promise.all(deletePromises).then(() => {
+              syncFromSheet({ silent: true });
+            });
           }
           break;
         }
@@ -6513,6 +6707,10 @@ document.addEventListener('DOMContentLoaded', () => {
       // land, instead of racing a fixed timer against several sequential
       // Apps Script round-trips and pulling back a stale DAILY_SUMMARY.
       const recordSalePromises = [];
+      // Sale_Entry_ID per product, filled in as each recordSale POST
+      // resolves — read when building productSalesLog below so each
+      // entry can later be reversed via the "delete sale" action.
+      const saleEntryIdsByProduct = {};
 
       state.products.forEach((p) => {
         const input = document.getElementById(`eodQty_${p.id}`);
@@ -6531,6 +6729,9 @@ document.addEventListener('DOMContentLoaded', () => {
             branch: state.branch,
             qty,
             previousQty: 0
+          }).then((res) => {
+            if (res && res.saleId) saleEntryIdsByProduct[p.id] = res.saleId;
+            return res;
           }));
         }
       });
@@ -6566,9 +6767,15 @@ document.addEventListener('DOMContentLoaded', () => {
         status: 'Recorded'
       });
 
+      // totalCost here is this EOD entry's COGS (what it cost to make what
+      // was sold) — it belongs in dailySummary.cost, which recomputeNetProfit_
+      // reads directly, NOT added into state.totalExpenses. That used to
+      // happen here, conflating "cost of goods sold" with "logged expense
+      // vouchers": every EOD save was quietly inflating the Expenses total
+      // by the day's COGS on top of whatever Raw Material expenses were
+      // already logged for the same purchases, double-counting twice over.
       state.totalRevenue += totalSales;
-      state.totalExpenses += totalCost;
-      state.netProfit = Math.max(0, state.totalRevenue - state.totalExpenses);
+      recomputeNetProfit_();
       state.todayRevenue += totalSales;
       state.totalOrders += totalQty;
       state.todayOrders += totalQty;
@@ -6607,11 +6814,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.activePage === 'sales') renderModulePage('sales');
       closeModal();
       showToast(`EOD summary saved: ${formatINR(Math.round(totalSales))} across ${rows.length} items`);
-      if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
-        Promise.all(recordSalePromises).then(() => {
+      // Attach each line's Sale_Entry_ID once every recordSale POST has
+      // resolved (saleEntryIdsByProduct is filled in as they land) — this
+      // is what lets the "Delete this day's entry" action on the Sales
+      // page find and reverse every real row on the sheet, not just wipe
+      // the local total. Runs even without sync-on-save, so an undo
+      // attempted later still works for whichever lines did get an ID.
+      Promise.all(recordSalePromises).then(() => {
+        state.productSalesLog
+          .filter((r) => r.isoDate === eodDate && saleEntryIdsByProduct[r.productId])
+          .forEach((r) => { r.saleEntryId = saleEntryIdsByProduct[r.productId]; });
+        if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
           syncFromSheet({ silent: true });
-        });
-      }
+        }
+      });
     } else if (form.id === 'modalExpenseForm' || form.id === 'modalBillForm') {
       // Every field here is genuinely required input (no fabricated fallback
       // values) — validate before touching state, same as every other
@@ -6623,6 +6839,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const vendor = (fd.get('vendor') || '').trim();
       const category = fd.get('category') || 'Raw Material';
       const mode = fd.get('mode') || 'UPI';
+      // The bill-upload form (modalBillForm) has no checkbox of its own —
+      // it's always a supplier invoice (milk, tea dust, etc.), which is the
+      // same "already in COGS" case the checkbox defaults to for Raw
+      // Material on the manual form, so it gets the same default here.
+      const alreadyInCogs = form.id === 'modalExpenseForm'
+        ? fd.has('alreadyInCogs')
+        : category === 'Raw Material';
 
       if (!title || !vendor || !amount || amount <= 0) {
         showToast('Please fill in description, vendor and a valid amount');
@@ -6641,11 +6864,11 @@ document.addEventListener('DOMContentLoaded', () => {
         category,
         mode,
         amount,
+        alreadyInCogs,
         status: 'Paid'
       });
 
-      state.totalExpenses += amount;
-      state.netProfit = Math.max(0, state.totalRevenue - state.totalExpenses);
+      recomputeNetProfit_();
 
       syncDashboardKPIs();
       renderAllCharts();
@@ -6666,6 +6889,7 @@ document.addEventListener('DOMContentLoaded', () => {
         category,
         mode,
         amount,
+        alreadyInCogs,
         status: 'Paid'
       });
       if (state.settings.apiBaseUrl && state.settings.syncOnSave) {
@@ -6753,6 +6977,28 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const ing = state.inventory.find((i) => i.sku === ingId);
       if (!ing) return;
+
+      // Adding the FIRST BOM row for a product is a one-way switch: from
+      // here on, this product's Raw_Cost is driven entirely by the sum of
+      // its RECIPE_BOM rows, not the manually-entered master-data cost it
+      // had until now — and until every ingredient in the real recipe is
+      // added, that sum is only a partial cost, silently replacing a
+      // complete (if rough) manual figure with an incomplete one. This is
+      // exactly the mistake that happened during this app's own backend
+      // testing (confirmed on the real production sheet), so it's gated
+      // behind an explicit confirmation rather than happening silently.
+      const existingBomRowsForProduct = (state.recipeBom || []).filter((r) => r.productId === prod.id);
+      if (existingBomRowsForProduct.length === 0 && prod.rawCost > 0) {
+        const proceed = confirm(
+          `${prod.name} currently has no recipe (BOM) rows — its cost (₹${prod.rawCost.toFixed(2)}) comes from a manually-entered value.\n\n` +
+          `Adding this ingredient switches ${prod.name} over to BOM-based costing: its Raw Cost will become the SUM of its recipe rows, starting with just this one ingredient (₹${lineCost.toFixed(2)}) until you add the rest of the real recipe.\n\n` +
+          `Until the full recipe is entered, the displayed cost will be LOWER than the real cost. Continue?`
+        );
+        if (!proceed) {
+          showToast('Cancelled — recipe not changed');
+          return;
+        }
+      }
 
       const lineCost = Math.round(usageQty * ing.unitCost * 100) / 100;
       const bomId = `BOM-${new Date().getTime()}`;
